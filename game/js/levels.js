@@ -10,13 +10,21 @@ const L1 = {
   physics: {},  // default
 
   platforms: [
-    new Platform(0,    660, 2560, 60),
+    // floor split into sections — gaps at 280-380, 590-680, 1050-1160, 1760-1870, 2120-2200
+    new Platform(0,    660, 280, 60),
+    new Platform(380,  660, 210, 60),
+    new Platform(680,  660, 370, 60),
+    new Platform(1160, 660, 600, 60),
+    new Platform(1870, 660, 250, 60),
+    new Platform(2200, 660, 360, 60),
+
+    // mid platforms (unchanged)
     new Platform(150,  560, 200, 18),
     new Platform(400,  480, 160, 18),
     new Platform(620,  540, 180, 18),
     new Platform(820,  460, 160, 18),
     new Platform(1010, 380, 140, 18),
-    new Platform(1180, 460, 200, 18),  // before checkpoint
+    new Platform(1180, 460, 200, 18),
     new Platform(1420, 380, 160, 18),
     new Platform(1600, 300, 140, 18),
     new Platform(1760, 380, 160, 18),
@@ -24,21 +32,43 @@ const L1 = {
     new Platform(2060, 220, 120, 18),
     new Platform(2200, 560, 200, 18),
     new Platform(2380, 480, 180, 18),
+    // secret platform — only reachable via teleport portal
+    new Platform(1278, 80, 130, 18, '#1a3a60'),
   ],
 
   shards: [
-    new Shard(412, 450),   // easy — on platform at y=480
-    new Shard(1612, 270),  // medium — requires 2 jumps to climb
-    new Shard(2072, 190),  // hard — highest point
+    new Shard(412,  450),   // easy — on platform at y=480
+    new Shard(1612, 270),   // medium — requires 2 jumps to climb
+    new Shard(1293, 48),    // hard — secret platform, only via portal
   ],
 
-  hazards: [],
+  hazards: [
+    // spike → pit 2: zone 1 pushes right into spike(475) then off edge at 590
+    new Hazard(475,  636, 80, 24),
+    // spike → pit 3: zone 2 pushes left into spike(1175) then back into pit at 1160
+    new Hazard(1175, 636, 80, 24),
+    // spike → pit 5: zone 3 pushes right into spike(1970) then off edge at 2120
+    new Hazard(1970, 636, 80, 24),
+  ],
 
   checkpoints: [
     new Checkpoint(1230, 422),
   ],
 
   portal: new Portal(2390, 408),
+
+  // Currents aligned to push player into spikes then pits
+  currents: [
+    new CurrentZone(380,  590,  0.95),   // → spike(475) → pit2(590)
+    new CurrentZone(1160, 1450, -0.95),  // ← spike(1175) ← pit3(1160)
+    new CurrentZone(1870, 2120,  0.95),  // → spike(1970) → pit5(2120)
+    new CurrentZone(2050, 2430,  0.95),  // rightward near end
+  ],
+
+  // Gold mini-portal: stands on platform y=380, teleports to secret platform y=80
+  teleportPortals: [
+    new TeleportPortal(1030, 308, 1290, 44),
+  ],
 };
 
 // ─────────────────────────────────────────────────────────────

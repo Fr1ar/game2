@@ -381,3 +381,117 @@ class Chaser {
     ctx.restore();
   }
 }
+
+// Horizontal wind current zone
+class CurrentZone {
+  constructor(x1, x2, force) {
+    this.x1 = x1; this.x2 = x2;
+    this.force = force;
+    this.pulse = 0;
+  }
+
+  applyTo(player) {
+    if (player.x + player.w > this.x1 && player.x < this.x2) {
+      player.vx += this.force;
+      if (Math.abs(player.vx) > player.physics.moveSpeed)
+        player.vx = Math.sign(player.vx) * player.physics.moveSpeed;
+    }
+  }
+
+  update() { this.pulse += 0.04; }
+
+  draw(ctx, camX) {
+    const sx = this.x1 - camX, ex = this.x2 - camX;
+    const dir = this.force > 0;
+    ctx.save();
+    const g = ctx.createLinearGradient(sx, 0, ex, 0);
+    g.addColorStop(dir ? 0 : 1, 'rgba(80,200,255,0)');
+    g.addColorStop(dir ? 1 : 0, 'rgba(80,200,255,0.16)');
+    ctx.fillStyle = g;
+    ctx.fillRect(sx, 0, ex - sx, 720);
+    ctx.globalAlpha = 0.22 + Math.sin(this.pulse) * 0.07;
+    ctx.fillStyle = '#70d0ff';
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center';
+    const arr = dir ? '→' : '←';
+    for (let ax = sx + 60; ax < ex - 20; ax += 120)
+      for (let ay = 110; ay < 640; ay += 120)
+        ctx.fillText(arr, ax, ay);
+    ctx.restore();
+  }
+}
+
+// Mini teleport portal — jumps player to a secret platform
+class TeleportPortal {
+  constructor(x, y, destX, destY) {
+    this.x = x; this.y = y;
+    this.w = 48; this.h = 72;
+    this.destX = destX; this.destY = destY;
+    this.pulse = 0; this.rotation = 0; this.cooldown = 0;
+  }
+
+  get cx() { return this.x + this.w / 2; }
+  get cy() { return this.y + this.h / 2; }
+
+  update() {
+    this.pulse += 0.06;
+    this.rotation += 0.03;
+    if (this.cooldown > 0) this.cooldown--;
+  }
+
+  checkTeleport(player) {
+    if (this.cooldown > 0) return;
+    if (player.x < this.x + this.w && player.x + player.w > this.x &&
+        player.y < this.y + this.h && player.y + player.h > this.y) {
+      player.x = this.destX;
+      player.y = this.destY;
+      player.vx = 0; player.vy = 0;
+      this.cooldown = 90;
+      for (let i = 0; i < 22; i++) {
+        const a = Math.random() * Math.PI * 2, spd = 1 + Math.random() * 3;
+        player.trailParticles.push({
+          x: player.cx + Math.cos(a) * 10, y: player.cy + Math.sin(a) * 10,
+          vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+          life: 35 + Math.random() * 20, maxLife: 55, dj: true,
+        });
+      }
+    }
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.cx - camX, sy = this.cy - camY;
+    const alpha = this.cooldown > 0 ? 0.30 : 1;
+    const sc = 1 + Math.sin(this.pulse) * 0.10;
+    const r = 26;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(sx, sy); ctx.scale(sc, sc); ctx.rotate(this.rotation);
+
+    const og = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r);
+    og.addColorStop(0, 'rgba(255,185,40,0.9)');
+    og.addColorStop(1, 'rgba(200,100,0,0)');
+    ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+
+    const ig = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.48);
+    ig.addColorStop(0, 'rgba(255,245,160,1)');
+    ig.addColorStop(1, 'rgba(255,160,0,0)');
+    ctx.fillStyle = ig; ctx.beginPath(); ctx.arc(0, 0, r * 0.48, 0, Math.PI * 2); ctx.fill();
+
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2 + this.rotation * 2;
+      ctx.strokeStyle = `rgba(255,215,80,${0.4 + Math.sin(this.pulse + i) * 0.2})`;
+      ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(ang) * r * 0.85, Math.sin(ang) * r * 0.85); ctx.stroke();
+    }
+    ctx.restore();
+
+    if (this.cooldown === 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.65 + Math.sin(this.pulse * 1.5) * 0.30;
+      ctx.fillStyle = '#ffe060'; ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText('ВОЙТИ', sx, sy + r + 4);
+      ctx.restore();
+    }
+  }
+}

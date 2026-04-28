@@ -53,6 +53,8 @@ function loadLevel(idx) {
     chaser = new Chaser(level.chaser.x, level.chaser.y, level.chaser.startDelay || 0);
   }
 
+  if (level.teleportPortals) level.teleportPortals.forEach(tp => { tp.cooldown = 0; });
+
   checkpointX = level.playerStart.x;
   checkpointY = level.playerStart.y;
   shardsCollected = 0;
@@ -206,6 +208,12 @@ function update() {
   level.checkpoints.forEach(c => c.update());
   level.portal.update();
 
+  // current zones
+  if (level.currents) level.currents.forEach(c => { c.update(); c.applyTo(player); });
+
+  // teleport portals
+  if (level.teleportPortals) level.teleportPortals.forEach(tp => { tp.update(); tp.checkTeleport(player); });
+
   // player update
   player.update(level.platforms, level.hazards);
 
@@ -280,11 +288,13 @@ function draw() {
 
   drawBackground();
 
+  if (level.currents) level.currents.forEach(c => c.draw(ctx, cam.x));
   level.platforms.forEach(p  => p.draw(ctx, cam.x, cam.y));
   level.hazards.forEach(h    => h.draw(ctx, cam.x, cam.y));
   level.checkpoints.forEach(c => c.draw(ctx, cam.x, cam.y));
   level.shards.forEach(s     => s.draw(ctx, cam.x, cam.y));
   level.portal.draw(ctx, cam.x, cam.y);
+  if (level.teleportPortals) level.teleportPortals.forEach(tp => tp.draw(ctx, cam.x, cam.y));
   if (chaser) chaser.draw(ctx, cam.x, cam.y);
   player.draw(ctx, cam.x, cam.y);
 
