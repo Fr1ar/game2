@@ -58,7 +58,18 @@ function loadLevel(idx) {
   }
 
   if (level.teleportPortals) level.teleportPortals.forEach(tp => { tp.cooldown = 0; });
-  if (level.spring) { level.spring.x = level.spring.startX; level.spring.y = level.spring.startY; level.spring.vx = 0; level.spring.vy = 0; }
+  if (level.spring) {
+    const sp = level.spring;
+    sp.startX = sp.spawnX; sp.startY = sp.spawnY;
+    sp.x = sp.spawnX;      sp.y = sp.spawnY;
+    sp.vx = 0; sp.vy = 0;
+    sp.onGround = false;
+    sp.squish = 0; sp.squishTimer = 0;
+  }
+  if (level.bats) level.bats.forEach(b => {
+    b.x = b.perchX; b.y = b.perchY; b.vx = 0; b.vy = 0;
+    b.state = 'perched'; b.facing = 1;
+  });
 
   checkpointX = level.playerStart.x;
   checkpointY = level.playerStart.y;
@@ -203,6 +214,10 @@ function update() {
       }
       if (level.chaser) chaser = new Chaser(level.chaser.x, level.chaser.y, level.chaser.startDelay || 0);
       if (level.spring) level.spring.resetToCheckpoint(checkpointX, checkpointY);
+      if (level.bats) level.bats.forEach(b => {
+        b.x = b.perchX; b.y = b.perchY; b.vx = 0; b.vy = 0;
+        b.state = 'perched'; b.facing = 1;
+      });
       state = State.PLAYING;
     }
     Input.flush();
@@ -263,6 +278,14 @@ function update() {
   if (chaser) {
     chaser.update(player, level.platforms);
     if (!player.dead && chaser.overlapsPlayer(player)) player.die();
+  }
+
+  // bats update
+  if (level.bats) {
+    level.bats.forEach(b => {
+      b.update(player, level.platforms);
+      if (!player.dead && b.overlapsPlayer(player)) player.die();
+    });
   }
 
   // death zone
@@ -341,6 +364,7 @@ function draw() {
   level.portal.draw(ctx, cam.x, cam.y);
   if (level.teleportPortals) level.teleportPortals.forEach(tp => tp.draw(ctx, cam.x, cam.y));
   if (level.spring) level.spring.draw(ctx, cam.x, cam.y);
+  if (level.bats) level.bats.forEach(b => b.draw(ctx, cam.x, cam.y));
   if (chaser) chaser.draw(ctx, cam.x, cam.y);
   player.draw(ctx, cam.x, cam.y);
 

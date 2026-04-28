@@ -127,6 +127,29 @@ const SoundFX = (() => {
     o.start(t); o.stop(t + 0.35);
   }
 
+  function batFlap(volume = 1) {
+    const ac = getCtx(); if (!ac) return;
+    const t = ac.currentTime;
+    const dur = 0.10;
+    // short noise burst → leathery flutter
+    const bufLen = Math.floor(ac.sampleRate * dur);
+    const buf = ac.createBuffer(1, bufLen, ac.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) {
+      const env = 1 - i / bufLen;
+      data[i] = (Math.random() * 2 - 1) * env;
+    }
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const bpf = ac.createBiquadFilter();
+    bpf.type = 'bandpass'; bpf.frequency.value = 520; bpf.Q.value = 1.4;
+    const g = ac.createGain(); g.gain.value = 0;
+    const peak = 0.18 * Math.max(0, Math.min(1, volume));
+    g.gain.linearRampToValueAtTime(peak, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(bpf); bpf.connect(g); g.connect(sfxBus);
+    src.start(t); src.stop(t + dur + 0.02);
+  }
+
   function gravityFlip() {
     const ac = getCtx(); if (!ac) return;
     const t = ac.currentTime;
@@ -429,13 +452,19 @@ const SoundFX = (() => {
   window.addEventListener('mousedown',  _wakeUp);
   window.addEventListener('touchstart', _wakeUp);
 
+  // Intro cutscene music — currently no dedicated track, reuse cutscene music.
+  function startIntroMusic() { startCutsceneMusic(); }
+  function stopIntroMusic()  { stopCutsceneMusic();  }
+
   return {
     // SFX
     jump, doubleJump, land, die, checkpoint, collectShard,
-    portalActive, portalEnter, gravityFlip, springBoing,
+    portalActive, portalEnter, gravityFlip, springBoing, batFlap,
     // BGM
     playBGM, stopBGM,
     // Cutscene
     startCutsceneMusic, stopCutsceneMusic,
+    // Intro cutscene
+    startIntroMusic, stopIntroMusic,
   };
 })();

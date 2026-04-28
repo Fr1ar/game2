@@ -225,42 +225,61 @@ const L4 = {
     // solid floor — no gaps (spring must not fall into pits)
     new Platform(0, 660, 3840, 60, '#200808'),
 
-    // mid platforms
-    new Platform(180,  560, 160, 18, '#2a1010'),
-    new Platform(380,  480, 140, 18, '#2a1010'),
-    new Platform(560,  560, 160, 18, '#2a1010'),
-    new Platform(880,  500, 160, 18, '#2a1010'),
-    new Platform(1060, 420, 140, 18, '#2a1010'),
-    new Platform(1240, 500, 160, 18, '#2a1010'),
-    new Platform(1440, 560, 160, 18, '#2a1010'),
+    // mid platforms — first shifted right & lowered; later ones raised
+    new Platform(560,  400, 140, 18, '#2a1010'),
+    new Platform(880,  360, 160, 18, '#2a1010'),  // raised
+    new Platform(1060, 240, 140, 18, '#2a1010'),  // raised — teleport portal at center
+    new Platform(1240, 160, 160, 18, '#2a1010'),  // raised high
+    new Platform(1440,  80, 160, 18, '#2a1010'),  // raised high — teleport portal at center
     new Platform(1740, 520, 160, 18, '#2a1010'),
-    new Platform(1920, 440, 140, 18, '#2a1010'),
-    new Platform(2100, 520, 160, 18, '#2a1010'),
+    new Platform(2100, 380, 160, 18, '#2a1010'),  // raised
     // no platforms in spring shard zone (x≈2300) for clean vertical corridor
     new Platform(2480, 520, 160, 18, '#2a1010'),
     new Platform(2760, 500, 160, 18, '#2a1010'),
-    new Platform(2960, 420, 140, 18, '#2a1010'),
-    new Platform(3140, 340, 120, 18, '#2a1010'),
-    new Platform(3460, 500, 160, 18, '#2a1010'),
-    new Platform(3650, 580, 190, 18, '#2a1010'),
+    // platforms near shard 3 (3152, 310) and penultimate platform removed — only reachable via spring
+    new Platform(3650, 420, 190, 18, '#2a1010'),  // final platform — lowered
   ],
 
   shards: [
-    new Shard(392,  450),  // easy — early level
+    new Shard(1120, 220),  // centered on third mid platform (1060..1200, top y=240)
     new Shard(2312, 300),  // hard — floating high, only via spring
     new Shard(3152, 310),  // end — near portal
   ],
 
-  spring: new SpringJumper(2260, 630),
+  spring: undefined,  // assigned below so the teleport can reference it dynamically
+
+  teleportPortals: undefined,  // assigned below — destination tracks the spring's live position
+
+  bats: [
+    new Bat(1100, 320),         // early — hovering between start and first checkpoint
+    new Bat(2544, 493, true),   // mid-late — sitting on the nearest platform (2480, 520)
+    new Bat(3300, 260),         // late — hovering near the climb before the portal
+  ],
 
   hazards: [],
+
+  // leftward wind under shard 2 (2312, 300) — pushes the springing player off course
+  currents: [
+    new CurrentZone(2200, 2420, -0.95),
+  ],
 
   checkpoints: [
     new Checkpoint(1780, 482),
   ],
 
-  portal: new Portal(3660, 508),
+  portal: new Portal(3660, 348),
 };
+
+// L4 spring + teleport: the teleport's destination is computed live so it
+// always tracks the spring's current x (player lands 100 px to its left).
+L4.spring = new SpringJumper(200, 630);
+L4.teleportPortals = [
+  new TeleportPortal(
+    1760, 8,
+    () => L4.spring.x - 100,
+    () => 624,
+  ),
+];
 
 // ─────────────────────────────────────────────────────────────
 // Level 5  "Сон Падения"  — gravity inversion toggle (↓/S)

@@ -304,7 +304,7 @@ class Chaser {
       // jump toward player when they're above
       this.jumpTimer--;
       if (this.onGround && player.y < this.y - 60 && this.jumpTimer <= 0) {
-        this.vy = -13;
+        this.vy = -9;  // halved max jump height (was -13)
         this.jumpTimer = 55;
       }
 
@@ -577,8 +577,8 @@ class TeleportPortal {
     if (this.cooldown > 0) return;
     if (player.x < this.x + this.w && player.x + player.w > this.x &&
         player.y < this.y + this.h && player.y + player.h > this.y) {
-      player.x = this.destX;
-      player.y = this.destY;
+      player.x = (typeof this.destX === 'function') ? this.destX() : this.destX;
+      player.y = (typeof this.destY === 'function') ? this.destY() : this.destY;
       player.vx = 0; player.vy = 0;
       this.cooldown = 90;
       for (let i = 0; i < 22; i++) {
@@ -714,94 +714,183 @@ class FanZone {
   }
 }
 
-// ── FanZone ───────────────────────────────────────────────────
-// Вентилятор: толкает игрока по оси X в зоне воздействия (Сон 6)
-// forceX > 0 — дует вправо, forceX < 0 — дует влево
-class FanZone {
-  constructor(x, y, w, h, forceX) {
-    this.x = x; this.y = y; this.w = w; this.h = h;
-    this.forceX = forceX;
-    this.pulse = 0;
-    this.bladeAngle = 0;
+// ── Bat ──────────────────────────────────────────────────────
+// Perches on a platform. When the player approaches, takes flight
+// and slowly chases the player while steering around obstacles.
+class Bat {
+  constructor(x, y, grounded = false) {
+    this.perchX = x; this.perchY = y;
+    this.x = x; this.y = y;
+    this.w = 33; this.h = 27;
+    this.grounded = grounded;
+    this.vx = 0; this.vy = 0;
+    this.state = 'perched';
+    this.detectRange = 280;
+    this.speed = 1.35;
+    this.flap = 0;
+    this.lastFlap = 0;
+    this.facing = 1;
+    this.bob = Math.random() * Math.PI * 2;
   }
 
-  applyTo(player) {
-    if (player.x + player.w > this.x && player.x < this.x + this.w &&
-        player.y + player.h > this.y && player.y < this.y + this.h) {
-      player.vx += this.forceX;
+  get cx() { return this.x + this.w / 2; }
+  get cy() { return this.y + this.h / 2; }
+
+  _collides(nx, ny, platforms) {
+    for (const p of platforms) {
+      if (!p.active) continue;
+      if (nx < p.x + p.w && nx + this.w > p.x &&
+          ny < p.y + p.h && ny + this.h > p.y) return true;
+    }
+    return false;
+  }
+
+  update(player, platforms) {
+    this.bob += 0.08;
+    this.lastFlap = this.flap;
+
+    const dx = player.cx - this.cx;
+    const dy = player.cy - this.cy;
+    const dist = Math.hypot(dx, dy);
+
+    if (this.state === 'perched') {
+      if (this.grounded) {
+        // sitting on the ground — almost still, only minimal wing twitches
+        this.flap += 0.05;
+      } else {
+        // hover in place — slow flap with gentle vertical bob
+        this.flap += 0.18;
+        this.y = this.perchY + Math.sin(this.bob) * 3;
+        this._maybePlayFlap(dist, 0.45);
+      }
+      if (dist < this.detectRange) {
+        this.state = 'flying';
+        this.vy = -0.5;
+      }
+      return;
+    }
+
+    this.flap += 0.42;
+    this._maybePlayFlap(dist, 1.0);
+
+    // seek player with light steering
+    const ang = Math.atan2(dy, dx);
+    const tvx = Math.cos(ang) * this.speed;
+    const tvy = Math.sin(ang) * this.speed + Math.sin(this.bob) * 0.15;
+    this.vx += (tvx - this.vx) * 0.07;
+    this.vy += (tvy - this.vy) * 0.07;
+
+    if (this.vx < -0.05) this.facing = -1;
+    else if (this.vx > 0.05) this.facing = 1;
+
+    // move on each axis separately; steer around blocking platforms
+    const nx = this.x + this.vx;
+    if (!this._collides(nx, this.y, platforms)) {
+      this.x = nx;
+    } else {
+      this.vx *= 0.3;
+      // bias vertically toward player's side so the bat slides past
+      this.vy += (dy >= 0 ? 1 : -1) * 0.25;
+    }
+
+    const ny = this.y + this.vy;
+    if (!this._collides(this.x, ny, platforms)) {
+      this.y = ny;
+    } else {
+      // hit ceiling/floor: try to go around horizontally toward player
+      this.vy *= 0.3;
+      this.vx += (dx >= 0 ? 1 : -1) * 0.25;
     }
   }
 
-  update() {
-    this.pulse += 0.05;
-    this.bladeAngle += 0.14;
+  // Trigger flap sound once per wing cycle (when sin(flap) crosses zero upward).
+  _maybePlayFlap(dist, intensity) {
+    const prev = Math.sin(this.lastFlap);
+    const cur  = Math.sin(this.flap);
+    if (prev <= 0 && cur > 0) {
+      const fade = Math.max(0, 1 - dist / 700);
+      const vol = fade * intensity * 0.8;
+      if (vol > 0.05) SoundFX.batFlap(vol);
+    }
+  }
+
+  overlapsPlayer(player) {
+    return this.x < player.x + player.w && this.x + this.w > player.x &&
+           this.y < player.y + player.h && this.y + this.h > player.y;
   }
 
   draw(ctx, camX, camY) {
-    const sx = this.x - camX;
-    const sy = this.y - camY;
-    const blowRight = this.forceX > 0;
+    const sx = this.cx - camX;
+    const sy = this.cy - camY;
+    const flying = this.state === 'flying';
+    const flapPhase = flying ? Math.sin(this.flap) : Math.sin(this.flap) * 0.4;
+    const wingExt = flying ? 6 + flapPhase * 4 : 1.5 + flapPhase * 2;
+    const wingY = flapPhase * (flying ? 2.5 : 1.5);
 
-    // ветровая зона — градиент в сторону дутья
-    const grd = ctx.createLinearGradient(
-      blowRight ? sx : sx + this.w, 0,
-      blowRight ? sx + this.w : sx, 0
-    );
-    grd.addColorStop(0,   `rgba(100,200,255,${0.14 + Math.sin(this.pulse) * 0.05})`);
-    grd.addColorStop(0.55, 'rgba(100,200,255,0.04)');
-    grd.addColorStop(1,   'rgba(100,200,255,0)');
     ctx.save();
-    ctx.fillStyle = grd;
-    ctx.fillRect(sx, sy, this.w, this.h);
 
-    // стрелки-подсказки
-    ctx.globalAlpha = 0.28 + Math.sin(this.pulse * 1.4) * 0.10;
-    ctx.fillStyle = '#80d8ff';
-    ctx.font = '15px sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'center';
-    const arr = blowRight ? '→' : '←';
-    for (let ax = sx + 70; ax < sx + this.w - 40; ax += 90) {
-      for (let ay = sy + 18; ay < sy + this.h - 8; ay += 32) {
-        ctx.fillText(arr, ax, ay);
-      }
-    }
-
-    // корпус вентилятора на стороне-источнике
-    const fanX = blowRight ? sx + 20 : sx + this.w - 20;
-    const fanY = sy + this.h / 2;
-    const R = Math.min(this.h / 2 - 6, 28);
-
-    ctx.globalAlpha = 1;
-    // корпус
-    ctx.fillStyle = '#0e2040';
+    // purple aura — makes the bat readable on dark backgrounds
+    const auraR = 27 + (flying ? Math.abs(flapPhase) * 5 : 0);
+    const aura = ctx.createRadialGradient(sx, sy, 0, sx, sy, auraR);
+    aura.addColorStop(0, 'rgba(180,120,255,0.35)');
+    aura.addColorStop(0.5, 'rgba(140,80,220,0.18)');
+    aura.addColorStop(1, 'rgba(120,60,200,0)');
+    ctx.fillStyle = aura;
     ctx.beginPath();
-    ctx.arc(fanX, fanY, R + 7, 0, Math.PI * 2);
+    ctx.arc(sx, sy, auraR, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#2060a0';
-    ctx.lineWidth = 2;
+
+    ctx.translate(sx, sy);
+    ctx.scale(this.facing * 1.5, 1.5);
+
+    // wings (drawn behind body) — dark grey with light outline
+    ctx.fillStyle = '#1a1a22';
+    ctx.strokeStyle = '#b090e0';
+    ctx.lineWidth = 1.2;
+    // left wing
+    ctx.beginPath();
+    ctx.moveTo(-2, -1);
+    ctx.lineTo(-9 - wingExt, -3 + wingY);
+    ctx.lineTo(-12 - wingExt, 1 + wingY);
+    ctx.lineTo(-9 - wingExt * 0.6, 2 + wingY * 0.5);
+    ctx.lineTo(-6 - wingExt * 0.4, 5 + wingY * 0.3);
+    ctx.lineTo(-2, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // right wing
+    ctx.beginPath();
+    ctx.moveTo(2, -1);
+    ctx.lineTo(9 + wingExt, -3 + wingY);
+    ctx.lineTo(12 + wingExt, 1 + wingY);
+    ctx.lineTo(9 + wingExt * 0.6, 2 + wingY * 0.5);
+    ctx.lineTo(6 + wingExt * 0.4, 5 + wingY * 0.3);
+    ctx.lineTo(2, 3);
+    ctx.closePath();
+    ctx.fill();
     ctx.stroke();
 
-    // лопасти
-    for (let i = 0; i < 4; i++) {
-      const ang = this.bladeAngle + (i / 4) * Math.PI * 2;
-      ctx.save();
-      ctx.globalAlpha = 0.80;
-      ctx.translate(fanX, fanY);
-      ctx.rotate(ang);
-      ctx.fillStyle = '#4090c8';
-      ctx.beginPath();
-      ctx.ellipse(R * 0.52, 0, R * 0.52, R * 0.17, 0.4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    // втулка
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = '#90c8ff';
+    // body
+    ctx.fillStyle = '#15151c';
     ctx.beginPath();
-    ctx.arc(fanX, fanY, 5, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 6, 7, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
+
+    // ears
+    ctx.beginPath();
+    ctx.moveTo(-4, -5); ctx.lineTo(-3, -10); ctx.lineTo(-1, -5);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(4, -5); ctx.lineTo(3, -10); ctx.lineTo(1, -5);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    // eyes
+    ctx.fillStyle = '#ff4040';
+    ctx.shadowColor = '#ff2020';
+    ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.arc(-2.5, -1, 1.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(2.5, -1, 1.3, 0, Math.PI * 2); ctx.fill();
 
     ctx.restore();
   }
@@ -810,6 +899,7 @@ class FanZone {
 // ── SpringJumper ─────────────────────────────────────────────
 class SpringJumper {
   constructor(x, y) {
+    this.spawnX = x; this.spawnY = y;
     this.startX = x; this.startY = y;
     this.x = x; this.y = y;
     this.w = 44; this.h = 28;
