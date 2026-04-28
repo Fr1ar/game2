@@ -429,4 +429,4 @@ const L6 = {
   portal: new Portal(1204, 2514),
 };
 
-const LEVELS = [L1, L2, L3, L4, L5, L6];
+const LEVELS = [L4, L5, L1, L2, L3, L6];
