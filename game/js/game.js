@@ -14,7 +14,7 @@ resize();
 
 const ctx = canvas.getContext('2d');
 
-const State = { INTRO: 0, PLAYING: 1, DEAD: 2, LEVEL_COMPLETE: 3, WIN: 4, CUTSCENE: 5 };
+const State = { INTRO: 0, PLAYING: 1, DEAD: 2, LEVEL_COMPLETE: 3, WIN: 4, CUTSCENE: 5, INTRO_CUTSCENE: 6 };
 
 let state, levelIndex, level, player, chaser,
     checkpointX, checkpointY,
@@ -76,8 +76,9 @@ function loadLevel(idx) {
 }
 
 function startGame() {
-  state = State.PLAYING;
-  loadLevel(0);
+  state = State.INTRO_CUTSCENE;
+  cutsceneTimer = 0;
+  SoundFX.startIntroMusic();
 }
 
 // --- Camera ---
@@ -140,6 +141,7 @@ function update() {
   for (let i = 0; i < 9; i++) {
     if (Input.wasPressed('Digit' + (i + 1)) && i < LEVELS.length) {
       SoundFX.stopCutsceneMusic();
+      SoundFX.stopIntroMusic();
       loadLevel(i);
       state = State.PLAYING;
       Input.flush();
@@ -149,6 +151,20 @@ function update() {
 
   if (state === State.INTRO) {
     if (Input.wasJumped() || Input.wasPressed('Enter') || Input.wasPressed('Space')) startGame();
+    Input.flush();
+    return;
+  }
+
+  if (state === State.INTRO_CUTSCENE) {
+    cutsceneTimer++;
+    if (cutsceneTimer > 60 && Input.wasJumped() && cutsceneTimer < 510) {
+      cutsceneTimer = 510;
+    }
+    if (cutsceneTimer > 580) {
+      SoundFX.stopIntroMusic();
+      loadLevel(0);
+      state = State.PLAYING;
+    }
     Input.flush();
     return;
   }
@@ -307,6 +323,7 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
 
   if (state === State.INTRO) { drawIntroScreen(); return; }
+  if (state === State.INTRO_CUTSCENE) { drawIntroCutscene(); return; }
   if (state === State.CUTSCENE) { drawCutscene(); return; }
 
   drawBackground();
@@ -640,6 +657,181 @@ function drawCutscene() {
   if (t > 470) {
     const fadeOut = Math.min(1, (t - 470) / 100);
     ctx.fillStyle = `rgba(255,245,225,${fadeOut})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function drawIntroCutscene() {
+  const t = cutsceneTimer;
+
+  // Evening → night
+  const nightP = Math.min(1, Math.max(0, (t - 80) / 370));
+  const r = Math.floor(88 - nightP * 80);
+  const g = Math.floor(52 - nightP * 48);
+  const b = Math.floor(80 - nightP * 66);
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, `rgb(${r},${g},${b})`);
+  grad.addColorStop(1, `rgb(${Math.floor(r*0.4)},${Math.floor(g*0.4)},${Math.floor(b*0.5)})`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Window
+  const wx = W * 0.72, wy = H * 0.32;
+  const ww = 140, wh = 200;
+
+  const skyR = Math.floor(160 - nightP * 155);
+  const skyG = Math.floor(100 - nightP * 96);
+  const skyB = Math.floor(60  + nightP * 80);
+  const winSky = ctx.createLinearGradient(wx - ww/2, wy - wh/2, wx + ww/2, wy + wh/2);
+  winSky.addColorStop(0, `rgb(${skyR},${skyG},${skyB})`);
+  winSky.addColorStop(1, `rgb(${Math.floor(skyR*0.5)},${Math.floor(skyG*0.4)},${Math.floor(skyB*0.7)})`);
+  ctx.fillStyle = winSky;
+  ctx.fillRect(wx - ww/2, wy - wh/2, ww, wh);
+
+  // Setting sun
+  if (t < 280) {
+    const sunY = wy - wh * 0.3 + (t / 280) * (wh * 0.9);
+    const sunA = 1 - nightP;
+    const sg = ctx.createRadialGradient(wx, sunY, 0, wx, sunY, 50);
+    sg.addColorStop(0, `rgba(255,190,80,${0.9 * sunA})`);
+    sg.addColorStop(1, 'rgba(255,100,0,0)');
+    ctx.fillStyle = sg;
+    ctx.beginPath(); ctx.arc(wx, sunY, 50, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(255,160,50,${sunA})`;
+    ctx.beginPath(); ctx.arc(wx, sunY, 20, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Stars
+  if (nightP > 0.35) {
+    const starA = (nightP - 0.35) / 0.65;
+    for (let i = 0; i < 12; i++) {
+      const stx = wx - ww/2 + 10 + (i * 19 + 7) % (ww - 20);
+      const sty = wy - wh/2 + 8  + (i * 31 + 3) % (wh * 0.65);
+      ctx.save();
+      ctx.globalAlpha = starA * (0.4 + Math.sin(t * 0.05 + i) * 0.35);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(stx, sty, 1.1, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Window frame
+  ctx.strokeStyle = '#1a0e24'; ctx.lineWidth = 6;
+  ctx.strokeRect(wx - ww/2, wy - wh/2, ww, wh);
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(wx, wy - wh/2); ctx.lineTo(wx, wy + wh/2);
+  ctx.moveTo(wx - ww/2, wy); ctx.lineTo(wx + ww/2, wy);
+  ctx.stroke();
+
+  // Floor shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(0, H - 80, W, 80);
+
+  // Bed
+  const bedX = W * 0.32, bedY = H * 0.62;
+  const bedW = 320, bedH = 90;
+  ctx.fillStyle = '#2a1840';
+  ctx.fillRect(bedX - bedW/2, bedY + bedH - 20, bedW, 30);
+  ctx.fillStyle = '#3e2860';
+  ctx.fillRect(bedX - bedW/2, bedY, bedW, bedH - 10);
+  ctx.fillStyle = '#e8d8ff';
+  ctx.beginPath(); ctx.roundRect(bedX - bedW/2 + 10, bedY + 8, 95, 42, 6); ctx.fill();
+
+  // Character lying down
+  const lieP = Math.min(1, Math.max(0, (t - 120) / 140));
+  const ch_x   = bedX - bedW/2 + 55;
+  const ch_y   = (bedY - 52) + lieP * ((bedY + 12) - (bedY - 52));
+
+  const blanketLen = 50 + lieP * 175;
+  ctx.fillStyle = '#6040b0';
+  ctx.beginPath(); ctx.roundRect(bedX - bedW/2 + 80, bedY + 10, blanketLen, bedH - 25, 4); ctx.fill();
+  ctx.fillStyle = 'rgba(180,140,255,0.3)';
+  ctx.fillRect(bedX - bedW/2 + 80, bedY + 10, blanketLen, 4);
+
+  if (lieP < 0.85) {
+    ctx.save();
+    ctx.globalAlpha = 1 - lieP / 0.85;
+    ctx.fillStyle = '#c0a0ff';
+    ctx.beginPath(); ctx.roundRect(ch_x - 14, ch_y + 12, 28, 50, 5); ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.fillStyle = '#d8c0ff';
+  ctx.beginPath(); ctx.ellipse(ch_x, ch_y, 16, 17, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Eyes open → closing
+  const eyeCloseP = Math.min(1, Math.max(0, (t - 340) / 110));
+  if (eyeCloseP < 1) {
+    ctx.fillStyle = '#1a0030';
+    ctx.beginPath(); ctx.ellipse(ch_x + 6, ch_y - 1, 2.5, Math.max(0.2, 3.2 * (1 - eyeCloseP)), 0, 0, Math.PI * 2); ctx.fill();
+    if (eyeCloseP < 0.4) {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(ch_x + 6.5, ch_y - 2, 0.9, 0, Math.PI * 2); ctx.fill();
+    }
+  } else {
+    ctx.strokeStyle = '#1a0030'; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(ch_x + 2, ch_y - 1); ctx.lineTo(ch_x + 9, ch_y - 1); ctx.stroke();
+  }
+
+  // Dream particles
+  if (t > 380) {
+    const pA = Math.min(1, (t - 380) / 100);
+    const pF = t > 500 ? Math.max(0, 1 - (t - 500) / 60) : 1;
+    for (let i = 0; i < 8; i++) {
+      const pa    = (i / 8) * Math.PI * 2 + t * 0.013;
+      const drift = (t * 0.38 + i * 44) % 130;
+      const pr    = 26 + Math.sin(t * 0.04 + i) * 10;
+      ctx.save();
+      ctx.globalAlpha = pA * pF * (0.5 - drift / 260) * (0.55 + Math.sin(t * 0.07 + i) * 0.25);
+      ctx.fillStyle = i % 2 === 0 ? '#a080ff' : '#80b0ff';
+      ctx.beginPath();
+      ctx.arc(ch_x + Math.cos(pa) * pr, ch_y - 18 - drift, 2 + Math.sin(t * 0.05 + i) * 0.9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Narrative text
+  let text = '';
+  if      (t >= 70  && t < 200) text = 'Вечер догорает...';
+  else if (t >= 200 && t < 340) text = 'Ты ложишься спать.';
+  else if (t >= 340 && t < 460) text = 'Глаза закрываются...';
+  else if (t >= 460 && t < 520) text = 'Сны приходят...';
+
+  if (text) {
+    const phase = t < 200 ? (t - 70) / 130 :
+                  t < 340 ? (t - 200) / 140 :
+                  t < 460 ? (t - 340) / 120 :
+                             (t - 460) / 60;
+    const a = Math.min(1, phase * 4) * Math.min(1, (1 - phase) * 4 + 0.3);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, a) * 0.92;
+    ctx.fillStyle = '#f0e0ff';
+    ctx.font = 'italic 26px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#7050ff';
+    ctx.shadowBlur = 22;
+    ctx.fillText(text, W / 2, H - 70);
+    ctx.restore();
+  }
+
+  // Skip hint
+  if (t > 60 && t < 510) {
+    ctx.save();
+    ctx.globalAlpha = 0.45 + Math.sin(Date.now() / 380) * 0.18;
+    ctx.fillStyle = '#9080b0';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('[ Space — пропустить ]', W / 2, H - 24);
+    ctx.restore();
+  }
+
+  // Fade to dark
+  if (t > 460) {
+    const fadeOut = Math.min(1, (t - 460) / 110);
+    ctx.fillStyle = `rgba(8,4,20,${fadeOut})`;
     ctx.fillRect(0, 0, W, H);
   }
 }

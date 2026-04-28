@@ -1,73 +1,100 @@
 // ─────────────────────────────────────────────────────────────
-// Level 1  "Спокойный сон"  — tutorial, normal physics
+// Level 1  "Спокойный сон"  — 6 gaps, 3 checkpoints, 5 currents
 // ─────────────────────────────────────────────────────────────
 const L1 = {
   name: 'Спокойный сон',
-  width: 2560, height: 720,
+  width: 3328, height: 720,
   bgColors: ['#0a0a18', '#0e0e24', '#141030'],
   playerStart: { x: 80, y: 580 },
   deathY: 730,
-  physics: {},  // default
+  physics: {},
 
   platforms: [
-    // floor split into sections — gaps at 280-380, 590-680, 1050-1160, 1760-1870, 2120-2200
-    new Platform(0,    660, 280, 60),
-    new Platform(380,  660, 210, 60),
-    new Platform(680,  660, 370, 60),
-    new Platform(1160, 660, 600, 60),
-    new Platform(1870, 660, 250, 60),
-    new Platform(2200, 660, 360, 60),
+    // ── floor — gaps at 260-410, 580-730, 1060-1210, 1750-1920, 2130-2280
+    new Platform(0,    660, 260, 60),
+    new Platform(410,  660, 170, 60),
+    new Platform(730,  660, 330, 60),
+    new Platform(1210, 660, 540, 60),
+    new Platform(1920, 660, 210, 60),
+    new Platform(2280, 660, 280, 60),
 
-    // mid platforms (unchanged)
-    new Platform(150,  560, 200, 18),
-    new Platform(400,  480, 160, 18),
-    new Platform(620,  540, 180, 18),
-    new Platform(820,  460, 160, 18),
-    new Platform(1010, 380, 140, 18),
-    new Platform(1180, 460, 200, 18),
-    new Platform(1420, 380, 160, 18),
-    new Platform(1600, 300, 140, 18),
-    new Platform(1760, 380, 160, 18),
-    new Platform(1920, 300, 140, 18),
-    new Platform(2060, 220, 120, 18),
-    new Platform(2200, 560, 200, 18),
-    new Platform(2380, 480, 180, 18),
-    // secret platform — only reachable via teleport portal
+    // ── section 1 (x=0–580): gentle rise
+    new Platform(90,   560, 150, 18),
+    new Platform(310,  460, 90,  18),   // narrow over gap1
+    new Platform(470,  530, 110, 18),   // checkpoint 1 island
+
+    // ── section 2 (x=580–1060): tricky over gaps
+    new Platform(590,  400, 90,  18),   // narrow over gap2 — shard 1
+    new Platform(760,  490, 110, 18),
+    new Platform(910,  380, 90,  18),
+    new Platform(1050, 290, 80,  18),   // high narrow — teleport portal
+
+    // ── section 3 (x=1060–1750): checkpoint + high climb
+    new Platform(1220, 460, 190, 18),
+    new Platform(1470, 370, 100, 18),   // checkpoint 2 island
+    new Platform(1620, 250, 110, 18),   // very high — shard 2
+    new Platform(1720, 360, 90,  18),   // narrow over gap4
+
+    // ── section 4 (x=1750–2560): endgame push
+    new Platform(1890, 460, 110, 18),
+    new Platform(2050, 360, 90,  18),   // narrow over gap5
+    new Platform(2230, 460, 120, 18),
+    new Platform(2370, 370, 100, 18),
+    new Platform(2440, 270, 110, 18),   // high challenge platform
+
+    // ── section 5 (x=2560–3328): final stretch — gap6 deadly
+    new Platform(2560, 660, 170, 60),   // floor 2560-2730
+    new Platform(2890, 660, 438, 60),   // floor 2890-3328
+    new Platform(2570, 490, 110, 18),
+    new Platform(2700, 380, 90,  18),   // narrow over gap6 (deadly)
+    new Platform(2870, 470, 120, 18),   // checkpoint 3 landing
+    new Platform(3000, 360, 100, 18),
+    new Platform(3100, 250, 110, 18),   // portal platform
+    new Platform(3220, 370, 90,  18),
+
+    // ── secret — teleport only
     new Platform(1278, 80, 130, 18, '#1a3a60'),
+
+    // ── catch platforms — only in SAFE gaps (1, 3, 5)
+    new Platform(265,  712, 140, 18, '#0a1428'),
+    new Platform(1065, 712, 140, 18, '#0a1428'),
+    new Platform(2135, 712, 140, 18, '#0a1428'),
   ],
 
   shards: [
-    new Shard(412,  450),   // easy — on platform at y=480
-    new Shard(1612, 270),   // medium — requires 2 jumps to climb
-    new Shard(1293, 48),    // hard — secret platform, only via portal
+    new Shard(598,  375),   // section 2 — narrow platform over gap2
+    new Shard(2238, 435),   // section 4 — platform x=2230 y=460
+    new Shard(3008, 335),   // section 5 — platform before portal
+    new Shard(1293, 48),    // secret    — teleport only
   ],
 
   hazards: [
-    // spike → pit 2: zone 1 pushes right into spike(475) then off edge at 590
-    new Hazard(475,  636, 80, 24),
-    // spike → pit 3: zone 2 pushes left into spike(1175) then back into pit at 1160
-    new Hazard(1175, 636, 80, 24),
-    // spike → pit 5: zone 3 pushes right into spike(1970) then off edge at 2120
-    new Hazard(1970, 636, 80, 24),
+    new Hazard(440,  636, 70, 24),  // zone1 → spike → gap2
+    new Hazard(810,  636, 70, 24),  // zone2 ← spike ← gap2
+    new Hazard(1280, 636, 70, 24),  // zone3 ← spike ← gap3
+    new Hazard(1990, 636, 70, 24),  // zone4 → spike → gap5
+    new Hazard(2660, 636, 60, 24),  // zone5 → spike, before gap6 (floor 2560-2730)
   ],
 
   checkpoints: [
-    new Checkpoint(1230, 422),
+    new Checkpoint(510, 490),    // on platform y=530
+    new Checkpoint(1510, 330),   // on platform y=370
+    new Checkpoint(2910, 430),   // on platform y=470, section 5
   ],
 
-  portal: new Portal(2390, 408),
+  portal: new Portal(3108, 178),   // on high platform y=250, section 5
 
-  // Currents aligned to push player into spikes then pits
   currents: [
-    new CurrentZone(380,  590,  0.95),   // → spike(475) → pit2(590)
-    new CurrentZone(1160, 1450, -0.95),  // ← spike(1175) ← pit3(1160)
-    new CurrentZone(1870, 2120,  0.95),  // → spike(1970) → pit5(2120)
-    new CurrentZone(2050, 2430,  0.95),  // rightward near end
+    new CurrentZone(410,   580,  1.1),            // → spike(440) → gap2
+    new PulsingCurrentZone(730, 1060, -1.1, 270), // ← alternating ← gap2  (~27% level)
+    new CurrentZone(1210, 1460, -1.0),            // ← steady ← gap3
+    new CurrentZone(1920, 2130,  1.1),            // → spike(1990) → gap5
+    new PulsingCurrentZone(2280, 2730, 1.0, 250), // → alternating → gap6  (~75% level)
+    new CurrentZone(2890, 3328,  1.0),            // → final push to portal
   ],
 
-  // Gold mini-portal: stands on platform y=380, teleports to secret platform y=80
   teleportPortals: [
-    new TeleportPortal(1030, 308, 1290, 44),
+    new TeleportPortal(1050, 218, 1290, 44),   // platform y=290 → secret y=80
   ],
 };
 

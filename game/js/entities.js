@@ -409,21 +409,149 @@ class CurrentZone {
 
   draw(ctx, camX) {
     const sx = this.x1 - camX, ex = this.x2 - camX;
+    const w = ex - sx;
     const dir = this.force > 0;
     ctx.save();
+    // directional gradient, both edges fade softly over ~18% of width
     const g = ctx.createLinearGradient(sx, 0, ex, 0);
-    g.addColorStop(dir ? 0 : 1, 'rgba(80,200,255,0)');
-    g.addColorStop(dir ? 1 : 0, 'rgba(80,200,255,0.16)');
+    if (dir) {
+      g.addColorStop(0,    'rgba(80,200,255,0)');
+      g.addColorStop(0.18, 'rgba(80,200,255,0.06)');
+      g.addColorStop(0.72, 'rgba(80,200,255,0.16)');
+      g.addColorStop(1,    'rgba(80,200,255,0)');
+    } else {
+      g.addColorStop(0,    'rgba(80,200,255,0)');
+      g.addColorStop(0.28, 'rgba(80,200,255,0.16)');
+      g.addColorStop(0.82, 'rgba(80,200,255,0.06)');
+      g.addColorStop(1,    'rgba(80,200,255,0)');
+    }
     ctx.fillStyle = g;
-    ctx.fillRect(sx, 0, ex - sx, 720);
-    ctx.globalAlpha = 0.22 + Math.sin(this.pulse) * 0.07;
+    ctx.fillRect(sx, 0, w, 720);
     ctx.fillStyle = '#70d0ff';
     ctx.font = '20px sans-serif';
     ctx.textAlign = 'center';
     const arr = dir ? '→' : '←';
-    for (let ax = sx + 60; ax < ex - 20; ax += 120)
+    const baseAlpha = 0.22 + Math.sin(this.pulse) * 0.07;
+    for (let ax = sx + 60; ax < ex - 20; ax += 120) {
+      const relX = (ax - sx) / w;
+      const edgeFade = Math.min(relX / 0.14, 1) * Math.min((1 - relX) / 0.14, 1);
+      ctx.globalAlpha = baseAlpha * edgeFade;
       for (let ay = 110; ay < 640; ay += 120)
         ctx.fillText(arr, ax, ay);
+    }
+    ctx.restore();
+  }
+}
+
+class PulsingCurrentZone extends CurrentZone {
+  constructor(x1, x2, force, period = 140) {
+    super(x1, x2, force);
+    this.baseForce = force;
+    this.period = period;
+    this.timer = 0;
+    // flowing arrow offset — separate per instance
+    this.flowOffset = 0;
+  }
+
+  update() {
+    this.timer++;
+    this.pulse += 0.04;
+    this.flowOffset += 0.8;
+
+    // smooth sine-based phase: 0..1 over full period
+    const t = (this.timer % this.period) / this.period;
+    // use sine to produce smooth ±1 that spends time at extremes
+    const sinePhase = Math.sin(t * Math.PI * 2 - Math.PI / 2); // -1..+1
+    this.force = this.baseForce * (sinePhase >= 0 ? 1 : -1);
+    // expose smooth blend value 0..1 (0=fully negative, 1=fully positive)
+    this.blend = (sinePhase + 1) / 2;
+  }
+
+  draw(ctx, camX) {
+    const sx = this.x1 - camX, ex = this.x2 - camX;
+    const w = ex - sx;
+    const dir = this.force > 0;
+
+    // blend: 0 = going left, 1 = going right
+    const b = this.blend ?? (dir ? 1 : 0);
+    // near-switch = blend close to 0.5, i.e. |b-0.5| < 0.18
+    const switchProx = 1 - Math.min(1, Math.abs(b - 0.5) / 0.18);
+
+    // --- background fill: smoothly shifts between two gradient directions ---
+    ctx.save();
+
+    // base intensity: steady + slight breathe
+    const baseAlpha = 0.13 + Math.sin(this.pulse) * 0.03;
+    // peak alpha at the dominant side, fades toward 0 at switch
+    const domAlpha = baseAlpha * (0.4 + 0.6 * Math.abs(b - 0.5) * 2);
+
+    // gradient with soft edges on both sides (~18% fade zones)
+    const g = ctx.createLinearGradient(sx, 0, ex, 0);
+    if (dir) {
+      g.addColorStop(0,    `rgba(255,120,30,0)`);
+      g.addColorStop(0.18, `rgba(255,130,35,${domAlpha * 0.35})`);
+      g.addColorStop(0.72, `rgba(255,160,60,${domAlpha})`);
+      g.addColorStop(1,    `rgba(255,160,60,0)`);
+    } else {
+      g.addColorStop(0,    `rgba(255,160,60,0)`);
+      g.addColorStop(0.28, `rgba(255,160,60,${domAlpha})`);
+      g.addColorStop(0.82, `rgba(255,130,35,${domAlpha * 0.35})`);
+      g.addColorStop(1,    `rgba(255,120,30,0)`);
+    }
+    // central flash near polarity switch
+    if (switchProx > 0.1) {
+      const mid = 0.5;
+      g.addColorStop(mid - 0.01, `rgba(255,255,200,${switchProx * 0.18})`);
+      g.addColorStop(mid,        `rgba(255,255,220,${switchProx * 0.22})`);
+      g.addColorStop(mid + 0.01, `rgba(255,255,200,${switchProx * 0.18})`);
+    }
+    ctx.fillStyle = g;
+    ctx.fillRect(sx, 0, w, 720);
+
+    // --- flowing arrows —————————————————————————————————————————
+    // arrow spacing & size
+    const cols = Math.ceil(w / 110) + 1;
+    const rows = 5;
+    const colStep = 110;
+    const rowStep = 110;
+    const startY = 100;
+
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const arr = dir ? '→' : '←';
+    // flow direction sign
+    const flowSign = dir ? 1 : -1;
+
+    for (let ci = 0; ci < cols; ci++) {
+      // base x scrolls with flowOffset
+      const rawX = sx + ((ci * colStep + this.flowOffset * flowSign) % w + w) % w;
+
+      for (let ri = 0; ri < rows; ri++) {
+        const ay = startY + ri * rowStep;
+
+        // distance from center of zone
+        const relX = (rawX - sx) / w; // 0..1
+        // fade at zone edges
+        const edgeFade = Math.min(relX / 0.08, 1) * Math.min((1 - relX) / 0.08, 1);
+
+        // near-switch: arrows dim and shimmer
+        const switchDim = 1 - switchProx * 0.6;
+        const shimmer = () =>
+          switchProx > 0.05 ? 0.5 + Math.sin(this.timer * 0.25 + ci * 1.3 + ri * 0.7) * 0.5 : 1;
+
+        const alpha = (0.28 + Math.sin(this.pulse + ci * 0.5 + ri * 0.8) * 0.09)
+                      * edgeFade * switchDim * shimmer();
+
+        if (alpha < 0.02) continue;
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = switchProx > 0.3 ? '#fff5c0' : '#ffcc70';
+        ctx.fillText(arr, rawX, ay);
+      }
+    }
+
     ctx.restore();
   }
 }
@@ -492,14 +620,6 @@ class TeleportPortal {
     }
     ctx.restore();
 
-    if (this.cooldown === 0) {
-      ctx.save();
-      ctx.globalAlpha = 0.65 + Math.sin(this.pulse * 1.5) * 0.30;
-      ctx.fillStyle = '#ffe060'; ctx.font = 'bold 11px sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText('ВОЙТИ', sx, sy + r + 4);
-      ctx.restore();
-    }
   }
 }
 
