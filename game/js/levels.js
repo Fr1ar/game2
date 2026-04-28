@@ -328,10 +328,10 @@ const L5 = {
   ],
 
   shards: [
-    // all shards near ceiling — only reachable with inverted gravity
-    new Shard(392,  140),   // ceiling zone — easy (low ceiling platform)
-    new Shard(932,  78),    // ceiling zone — medium
-    new Shard(2012, 78),    // ceiling zone — hard (far end)
+    // все осколки у потолка — парят вниз (hoverDY:+1), т.к. потолок = пол при инверсии
+    Object.assign(new Shard(392,  140), { hoverDY:  1 }),
+    Object.assign(new Shard(932,   78), { hoverDY:  1 }),
+    Object.assign(new Shard(2012,  78), { hoverDY:  1 }),
   ],
 
   hazards: [],
@@ -404,9 +404,10 @@ const L6 = {
   ],
 
   shards: [
-    new Shard(30,   286),   // левая стена, сектор 1  — лёгкий
-    new Shard(1228, 1058),  // правая стена, сектор 2 — средний
-    new Shard(30,   2204),  // левая стена, сектор 3  — сложный
+    // парят от стены: левые → вправо (hoverDX:+1), правые → влево (hoverDX:-1)
+    Object.assign(new Shard(30,   286),  { hoverDX:  1, hoverDY: 0 }),
+    Object.assign(new Shard(1228, 1058), { hoverDX: -1, hoverDY: 0 }),
+    Object.assign(new Shard(30,   2204), { hoverDX:  1, hoverDY: 0 }),
   ],
 
   hazards: [],

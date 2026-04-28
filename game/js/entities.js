@@ -114,11 +114,14 @@ class Shard {
 
     if (this.collected) return;
 
-    const HOVER = 26;  // px выше центра хитбокса — визуальное парение над поверхностью
+    const HOVER = 26;  // px от центра хитбокса — визуальное парение от поверхности
+    // hoverDX/hoverDY задают направление парения (по умолч. вверх от пола: dy=-1)
+    const hdx   = this.hoverDX ?? 0;
+    const hdy   = this.hoverDY ?? -1;
     const bobY  = Math.sin(this.bob) * 6;
     const pulse = Math.sin(this.pulse);
-    const sx = this.cx - camX;
-    const sy = this.cy - camY - HOVER + bobY;
+    const sx = this.cx - camX + hdx * HOVER;
+    const sy = this.cy - camY + hdy * HOVER + bobY;
     const R  = 18;  // gem radius
 
     ctx.save();
