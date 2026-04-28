@@ -71,11 +71,13 @@ class Player {
         this.vy = -ph.jumpForce * this.gravityDir;
         this.coyoteTimer = 0;
         this.jumpBuffer = 0;
+        SoundFX.jump();
       } else if (this.canDoubleJump) {
         this.vy = -ph.djForce * this.gravityDir;
         this.canDoubleJump = false;
         this.jumpBuffer = 0;
         this._spawnDJBurst();
+        SoundFX.doubleJump();
       }
     }
 
@@ -94,9 +96,11 @@ class Player {
     this.x += this.vx;
     this._resolveX(platforms);
 
+    const wasOnGround = this.onGround;
     this.onGround = false;
     this.y += this.vy;
     this._resolveY(platforms);
+    if (!wasOnGround && this.onGround) SoundFX.land();
 
     // --- hazards ---
     for (const h of hazards) {
@@ -114,7 +118,12 @@ class Player {
     if (this.animTimer > 8) { this.animTimer = 0; this.animFrame = (this.animFrame + 1) % 4; }
   }
 
-  die() { this.dead = true; this.deathTimer = 0; }
+  die() {
+    if (this.dead) return;
+    this.dead = true;
+    this.deathTimer = 0;
+    SoundFX.die();
+  }
 
   _resolveX(platforms) {
     for (const p of platforms) {

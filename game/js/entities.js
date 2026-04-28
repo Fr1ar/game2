@@ -272,7 +272,7 @@ class FadePlatform extends Platform {
 
 // Chasing nightmare entity — "Кошмар"
 class Chaser {
-  constructor(x, y) {
+  constructor(x, y, startDelay = 0) {
     this.x = x; this.y = y;
     this.w = 36; this.h = 36;
     this.vx = 0; this.vy = 0;
@@ -281,18 +281,27 @@ class Chaser {
     this.jumpTimer = 0;
     this.pulse = 0;
     this.trailPts = [];
+    this.startDelay = startDelay;
   }
 
   update(player, platforms) {
     this.pulse += 0.09;
-    const dx = player.cx - (this.x + this.w / 2);
-    this.vx = Math.sign(dx) * this.speed;
 
-    // jump toward player when they're above
-    this.jumpTimer--;
-    if (this.onGround && player.y < this.y - 60 && this.jumpTimer <= 0) {
-      this.vy = -13;
-      this.jumpTimer = 55;
+    if (this.startDelay > 0) {
+      this.startDelay--;
+      this.vx = 0;
+    } else {
+      const dx = player.cx - (this.x + this.w / 2);
+      this.vx = Math.sign(dx) * this.speed;
+
+      // jump toward player when they're above
+      this.jumpTimer--;
+      if (this.onGround && player.y < this.y - 60 && this.jumpTimer <= 0) {
+        this.vy = -13;
+        this.jumpTimer = 55;
+      }
+
+      this.speed = Math.min(4.5, this.speed + 0.0008);
     }
 
     this.vy += 0.6;
@@ -313,8 +322,6 @@ class Chaser {
         this.vy = 0;
       }
     }
-
-    this.speed = Math.min(4.5, this.speed + 0.0008);
 
     this.trailPts.push({ x: this.x + this.w/2, y: this.y + this.h/2, life: 18 });
     this.trailPts = this.trailPts.filter(p => p.life-- > 0);

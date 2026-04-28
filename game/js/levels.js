@@ -162,7 +162,7 @@ const L4 = {
   deathY: 730,
   physics: { moveSpeed: 5.2 },  // slightly faster player
 
-  chaser: { x: -180, y: 580 },  // spawn behind player
+  chaser: { x: 20, y: 580, startDelay: 120 },  // spawn behind player, on ground; freeze 2s before chasing
 
   platforms: [
     // ground — mostly continuous but with some gaps
