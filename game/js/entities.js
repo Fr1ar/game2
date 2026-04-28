@@ -304,7 +304,7 @@ class Chaser {
       // jump toward player when they're above
       this.jumpTimer--;
       if (this.onGround && player.y < this.y - 60 && this.jumpTimer <= 0) {
-        this.vy = -13;
+        this.vy = -9;  // halved max jump height (was -13)
         this.jumpTimer = 55;
       }
 
@@ -551,11 +551,6 @@ class PulsingCurrentZone extends CurrentZone {
       }
     }
 
-=======
-    for (let ax = sx + 60; ax < ex - 20; ax += 120)
-      for (let ay = 110; ay < 640; ay += 120)
-        ctx.fillText(arr, ax, ay);
->>>>>>> origin/main
     ctx.restore();
   }
 }
@@ -582,8 +577,8 @@ class TeleportPortal {
     if (this.cooldown > 0) return;
     if (player.x < this.x + this.w && player.x + player.w > this.x &&
         player.y < this.y + this.h && player.y + player.h > this.y) {
-      player.x = this.destX;
-      player.y = this.destY;
+      player.x = (typeof this.destX === 'function') ? this.destX() : this.destX;
+      player.y = (typeof this.destY === 'function') ? this.destY() : this.destY;
       player.vx = 0; player.vy = 0;
       this.cooldown = 90;
       for (let i = 0; i < 22; i++) {
@@ -719,9 +714,192 @@ class FanZone {
   }
 }
 
+// ── Bat ──────────────────────────────────────────────────────
+// Perches on a platform. When the player approaches, takes flight
+// and slowly chases the player while steering around obstacles.
+class Bat {
+  constructor(x, y, grounded = false) {
+    this.perchX = x; this.perchY = y;
+    this.x = x; this.y = y;
+    this.w = 33; this.h = 27;
+    this.grounded = grounded;
+    this.vx = 0; this.vy = 0;
+    this.state = 'perched';
+    this.detectRange = 280;
+    this.speed = 1.35;
+    this.flap = 0;
+    this.lastFlap = 0;
+    this.facing = 1;
+    this.bob = Math.random() * Math.PI * 2;
+  }
+
+  get cx() { return this.x + this.w / 2; }
+  get cy() { return this.y + this.h / 2; }
+
+  _collides(nx, ny, platforms) {
+    for (const p of platforms) {
+      if (!p.active) continue;
+      if (nx < p.x + p.w && nx + this.w > p.x &&
+          ny < p.y + p.h && ny + this.h > p.y) return true;
+    }
+    return false;
+  }
+
+  update(player, platforms) {
+    this.bob += 0.08;
+    this.lastFlap = this.flap;
+
+    const dx = player.cx - this.cx;
+    const dy = player.cy - this.cy;
+    const dist = Math.hypot(dx, dy);
+
+    if (this.state === 'perched') {
+      if (this.grounded) {
+        // sitting on the ground — almost still, only minimal wing twitches
+        this.flap += 0.05;
+      } else {
+        // hover in place — slow flap with gentle vertical bob
+        this.flap += 0.18;
+        this.y = this.perchY + Math.sin(this.bob) * 3;
+        this._maybePlayFlap(dist, 0.45);
+      }
+      if (dist < this.detectRange) {
+        this.state = 'flying';
+        this.vy = -0.5;
+      }
+      return;
+    }
+
+    this.flap += 0.42;
+    this._maybePlayFlap(dist, 1.0);
+
+    // seek player with light steering
+    const ang = Math.atan2(dy, dx);
+    const tvx = Math.cos(ang) * this.speed;
+    const tvy = Math.sin(ang) * this.speed + Math.sin(this.bob) * 0.15;
+    this.vx += (tvx - this.vx) * 0.07;
+    this.vy += (tvy - this.vy) * 0.07;
+
+    if (this.vx < -0.05) this.facing = -1;
+    else if (this.vx > 0.05) this.facing = 1;
+
+    // move on each axis separately; steer around blocking platforms
+    const nx = this.x + this.vx;
+    if (!this._collides(nx, this.y, platforms)) {
+      this.x = nx;
+    } else {
+      this.vx *= 0.3;
+      // bias vertically toward player's side so the bat slides past
+      this.vy += (dy >= 0 ? 1 : -1) * 0.25;
+    }
+
+    const ny = this.y + this.vy;
+    if (!this._collides(this.x, ny, platforms)) {
+      this.y = ny;
+    } else {
+      // hit ceiling/floor: try to go around horizontally toward player
+      this.vy *= 0.3;
+      this.vx += (dx >= 0 ? 1 : -1) * 0.25;
+    }
+  }
+
+  // Trigger flap sound once per wing cycle (when sin(flap) crosses zero upward).
+  _maybePlayFlap(dist, intensity) {
+    const prev = Math.sin(this.lastFlap);
+    const cur  = Math.sin(this.flap);
+    if (prev <= 0 && cur > 0) {
+      const fade = Math.max(0, 1 - dist / 700);
+      const vol = fade * intensity * 0.8;
+      if (vol > 0.05) SoundFX.batFlap(vol);
+    }
+  }
+
+  overlapsPlayer(player) {
+    return this.x < player.x + player.w && this.x + this.w > player.x &&
+           this.y < player.y + player.h && this.y + this.h > player.y;
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.cx - camX;
+    const sy = this.cy - camY;
+    const flying = this.state === 'flying';
+    const flapPhase = flying ? Math.sin(this.flap) : Math.sin(this.flap) * 0.4;
+    const wingExt = flying ? 6 + flapPhase * 4 : 1.5 + flapPhase * 2;
+    const wingY = flapPhase * (flying ? 2.5 : 1.5);
+
+    ctx.save();
+
+    // purple aura — makes the bat readable on dark backgrounds
+    const auraR = 27 + (flying ? Math.abs(flapPhase) * 5 : 0);
+    const aura = ctx.createRadialGradient(sx, sy, 0, sx, sy, auraR);
+    aura.addColorStop(0, 'rgba(180,120,255,0.35)');
+    aura.addColorStop(0.5, 'rgba(140,80,220,0.18)');
+    aura.addColorStop(1, 'rgba(120,60,200,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(sx, sy, auraR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.translate(sx, sy);
+    ctx.scale(this.facing * 1.5, 1.5);
+
+    // wings (drawn behind body) — dark grey with light outline
+    ctx.fillStyle = '#1a1a22';
+    ctx.strokeStyle = '#b090e0';
+    ctx.lineWidth = 1.2;
+    // left wing
+    ctx.beginPath();
+    ctx.moveTo(-2, -1);
+    ctx.lineTo(-9 - wingExt, -3 + wingY);
+    ctx.lineTo(-12 - wingExt, 1 + wingY);
+    ctx.lineTo(-9 - wingExt * 0.6, 2 + wingY * 0.5);
+    ctx.lineTo(-6 - wingExt * 0.4, 5 + wingY * 0.3);
+    ctx.lineTo(-2, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // right wing
+    ctx.beginPath();
+    ctx.moveTo(2, -1);
+    ctx.lineTo(9 + wingExt, -3 + wingY);
+    ctx.lineTo(12 + wingExt, 1 + wingY);
+    ctx.lineTo(9 + wingExt * 0.6, 2 + wingY * 0.5);
+    ctx.lineTo(6 + wingExt * 0.4, 5 + wingY * 0.3);
+    ctx.lineTo(2, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // body
+    ctx.fillStyle = '#15151c';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 6, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // ears
+    ctx.beginPath();
+    ctx.moveTo(-4, -5); ctx.lineTo(-3, -10); ctx.lineTo(-1, -5);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(4, -5); ctx.lineTo(3, -10); ctx.lineTo(1, -5);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    // eyes
+    ctx.fillStyle = '#ff4040';
+    ctx.shadowColor = '#ff2020';
+    ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.arc(-2.5, -1, 1.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(2.5, -1, 1.3, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+  }
+}
+
 // ── SpringJumper ─────────────────────────────────────────────
 class SpringJumper {
   constructor(x, y) {
+    this.spawnX = x; this.spawnY = y;
     this.startX = x; this.startY = y;
     this.x = x; this.y = y;
     this.w = 44; this.h = 28;
@@ -820,6 +998,603 @@ class SpringJumper {
     ctx.globalAlpha = 0.18;
     ctx.fillStyle = '#000';
     ctx.fillRect(sx - ox + 2, sy + oy + sh + 1, sw, 3);
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OCEAN ENTITIES  (Сон 2 — Водный сон)
+// ═══════════════════════════════════════════════════════════════
+
+// ── FloatingPlatform ──────────────────────────────────────────
+class FloatingPlatform extends Platform {
+  constructor(x, y, w, h, amplitude = 50, speed = 0.025, color = '#0a2030') {
+    super(x, y, w, h, color);
+    this.baseY = y;
+    this.amplitude = amplitude;
+    this.speed = speed;
+    this.phase = Math.random() * Math.PI * 2;
+  }
+
+  update() {
+    this.phase += this.speed;
+    this.y = this.baseY + Math.sin(this.phase) * this.amplitude;
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.x - camX, sy = this.y - camY;
+    ctx.fillStyle = this.color;
+    ctx.fillRect(sx, sy, this.w, this.h);
+    // ocean surface shimmer
+    ctx.fillStyle = 'rgba(40,160,220,0.55)';
+    ctx.fillRect(sx, sy, this.w, 3);
+    ctx.fillStyle = 'rgba(80,200,255,0.12)';
+    ctx.fillRect(sx, sy - 5, this.w, 5);
+  }
+}
+
+// ── Jellyfish ─────────────────────────────────────────────────
+class Jellyfish {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.baseY = y;
+    this.timer = 0;
+    this.period = 120;
+    this.radius = 70;
+    this.bobPhase = Math.random() * Math.PI * 2;
+    this.w = 56; this.h = 56;
+  }
+
+  get cx() { return this.x; }
+  get cy() { return this.y; }
+
+  update() {
+    this.timer = (this.timer + 1) % this.period;
+    this.bobPhase += 0.018;
+    this.y = this.baseY + Math.sin(this.bobPhase) * 22;
+  }
+
+  checkHit(player) {
+    // attack phase: last 25% of cycle
+    if (this.timer < this.period * 0.75) return false;
+    const dx = (player.x + player.w / 2) - this.x;
+    const dy = (player.y + player.h / 2) - this.y;
+    return Math.sqrt(dx * dx + dy * dy) < this.radius;
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.x - camX;
+    const sy = this.y - camY;
+    const t = this.timer / this.period;
+    const isPulsing = t > 0.67;
+    const pulse = isPulsing ? (t - 0.67) / 0.33 : 0;
+
+    ctx.save();
+
+    // warning glow before attack
+    if (t > 0.45) {
+      const warnA = ((t - 0.45) / 0.55) * 0.22;
+      const wg = ctx.createRadialGradient(sx, sy, 0, sx, sy, this.radius);
+      wg.addColorStop(0, `rgba(180,80,255,${warnA})`);
+      wg.addColorStop(1, 'rgba(180,80,255,0)');
+      ctx.fillStyle = wg;
+      ctx.beginPath();
+      ctx.arc(sx, sy, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // dome body
+    const bodyR = 26 + Math.sin(this.bobPhase * 2) * 4 + pulse * 10;
+    const bg = ctx.createRadialGradient(sx, sy - bodyR * 0.35, 2, sx, sy, bodyR);
+    bg.addColorStop(0, isPulsing ? 'rgba(255,210,255,0.98)' : 'rgba(200,150,255,0.82)');
+    bg.addColorStop(0.55, isPulsing ? `rgba(220,140,255,${0.9 - pulse * 0.3})` : 'rgba(150,90,220,0.72)');
+    bg.addColorStop(1, 'rgba(90,30,170,0)');
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.arc(sx, sy, bodyR, Math.PI, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // tentacles
+    const tentA = 0.38 + pulse * 0.4;
+    ctx.strokeStyle = `rgba(180,110,255,${tentA})`;
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 6; i++) {
+      const tx = sx - 22 + i * 9;
+      const len = 28 + Math.sin(this.bobPhase + i * 0.9) * 12;
+      ctx.beginPath();
+      ctx.moveTo(tx, sy + 5);
+      ctx.quadraticCurveTo(tx + Math.sin(this.bobPhase + i) * 8, sy + len * 0.5, tx, sy + len);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+// ── FishSchool ────────────────────────────────────────────────
+class FishSchool {
+  constructor(x, y, w, h) {
+    this.x = x; this.y = y; this.w = w; this.h = h;
+    this.startX = x;
+    this.dir = 1;
+    this.speed = 1.2;
+    this.timer = 0;
+    this.changeInterval = 180;
+    this.fish = [];
+    for (let i = 0; i < 12; i++) {
+      this.fish.push({
+        ox: Math.random() * w,
+        oy: Math.random() * h,
+        wobble: Math.random() * Math.PI * 2,
+        size: 4 + Math.random() * 4,
+      });
+    }
+  }
+
+  update() {
+    this.timer++;
+    if (this.timer >= this.changeInterval) { this.dir *= -1; this.timer = 0; }
+    this.x += this.dir * this.speed;
+    if (this.x > this.startX + 200) this.dir = -1;
+    if (this.x < this.startX - 200) this.dir = 1;
+    this.fish.forEach(f => { f.wobble += 0.09; });
+  }
+
+  applyTo(player) {
+    if (player.x + player.w > this.x && player.x < this.x + this.w &&
+        player.y + player.h > this.y && player.y < this.y + this.h) {
+      player.vx += this.dir * 0.85;
+    }
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.x - camX;
+    const sy = this.y - camY;
+    ctx.save();
+    this.fish.forEach(f => {
+      const fx = sx + f.ox + Math.sin(f.wobble * 0.5) * 14;
+      const fy = sy + f.oy + Math.sin(f.wobble) * 8;
+      ctx.save();
+      ctx.translate(fx, fy);
+      ctx.scale(this.dir, 1);
+      const a = 0.45 + Math.sin(f.wobble) * 0.18;
+      ctx.fillStyle = `rgba(100,200,255,${a})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, f.size, f.size * 0.45, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(70,160,220,${a})`;
+      ctx.beginPath();
+      ctx.moveTo(-f.size, 0);
+      ctx.lineTo(-f.size - f.size * 0.9, -f.size * 0.5);
+      ctx.lineTo(-f.size - f.size * 0.9, f.size * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+}
+
+// ── Tentacle ──────────────────────────────────────────────────
+class Tentacle {
+  constructor(x, groundY) {
+    this.x = x;
+    this.groundY = groundY;
+    this.w = 38;
+    this.activateDist = 130;
+    this.state = 'hidden';
+    this.riseY = groundY;
+    this.riseTarget = groundY - 170;
+    this.riseSpeed = 3.5;
+    this.timer = 0;
+  }
+
+  update(player) {
+    const dx = Math.abs((player.x + player.w / 2) - this.x);
+
+    if (this.state === 'hidden') {
+      if (dx < this.activateDist) { this.state = 'rising'; this.timer = 0; }
+    } else if (this.state === 'rising') {
+      this.riseY = Math.max(this.riseTarget, this.riseY - this.riseSpeed);
+      if (this.riseY <= this.riseTarget) { this.state = 'attack'; this.timer = 0; }
+    } else if (this.state === 'attack') {
+      this.timer++;
+      if (this.timer > 70) { this.state = 'retreating'; this.timer = 0; }
+    } else if (this.state === 'retreating') {
+      this.riseY = Math.min(this.groundY, this.riseY + this.riseSpeed * 0.6);
+      if (this.riseY >= this.groundY) { this.state = 'hidden'; }
+    }
+  }
+
+  checkHit(player) {
+    if (this.state !== 'attack' && this.state !== 'rising') return false;
+    const left = this.x - this.w / 2;
+    const right = this.x + this.w / 2;
+    return player.x + player.w > left && player.x < right &&
+           player.y + player.h > this.riseY && player.y < this.groundY;
+  }
+
+  // screen-space warning indicator (called from game.js draw loop)
+  drawWarning(ctx, W, H, camX, camY) {
+    if (this.state === 'hidden') return;
+    const sx = this.x - camX;
+    const sy = this.riseY - camY;
+
+    // пульсирующая красная рамка экрана
+    const intensity = this.state === 'attack'
+      ? 0.55 + Math.sin(this.timer * 0.35) * 0.3
+      : 0.2 + (1 - (this.riseY - this.riseTarget) / (this.groundY - this.riseTarget)) * 0.35;
+
+    ctx.save();
+    const border = ctx.createLinearGradient(0, H * 0.6, 0, H);
+    border.addColorStop(0, 'rgba(0,230,180,0)');
+    border.addColorStop(1, `rgba(0,230,180,${intensity * 0.6})`);
+    ctx.fillStyle = border;
+    ctx.fillRect(0, H * 0.6, W, H * 0.4);
+
+    // стрелка-указатель снизу экрана к щупальцу
+    if (sx >= -60 && sx <= W + 60) {
+      const arrowX = Math.max(40, Math.min(W - 40, sx));
+      ctx.globalAlpha = intensity;
+      ctx.fillStyle = '#00ffe0';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('⚠', arrowX, H - 8);
+    }
+    ctx.restore();
+  }
+
+  draw(ctx, camX, camY) {
+    if (this.state === 'hidden') return;
+    const sx = this.x - camX;
+    const sy = this.riseY - camY;
+    const height = Math.max(10, this.groundY - this.riseY);
+
+    ctx.save();
+
+    // внешнее биолюминесцентное свечение
+    const glowR = this.state === 'attack' ? 90 : 60;
+    const glowA = this.state === 'attack' ? 0.38 + Math.sin(this.timer * 0.3) * 0.18 : 0.18;
+    const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, glowR);
+    glow.addColorStop(0, `rgba(0,255,200,${glowA})`);
+    glow.addColorStop(0.5, `rgba(0,180,140,${glowA * 0.4})`);
+    glow.addColorStop(1, 'rgba(0,100,80,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(sx, sy, glowR, 0, Math.PI * 2); ctx.fill();
+
+    // тело — сегменты с рисунком присосок
+    const segCount = 6;
+    const seg = height / segCount;
+    for (let i = 0; i < segCount; i++) {
+      const ty = sy + i * seg;
+      const hw = 11 - i * 0.8;
+      const wobble = Math.sin(this.timer * 0.16 + i * 1.0) * 6;
+      const t = i / segCount;
+
+      // основной сегмент — тёмный с тиловым краем
+      ctx.fillStyle = `rgba(0,${30 + i * 8},${25 + i * 6},0.92)`;
+      ctx.beginPath();
+      ctx.ellipse(sx + wobble, ty + seg * 0.5, hw + 2, seg * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // биолюминесцентная полоска сбоку
+      const lineA = 0.5 + Math.sin(this.timer * 0.2 + i * 0.7) * 0.25;
+      ctx.strokeStyle = `rgba(0,255,190,${lineA})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(sx + wobble - hw, ty + seg * 0.2);
+      ctx.lineTo(sx + wobble - hw, ty + seg * 0.8);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(sx + wobble + hw, ty + seg * 0.2);
+      ctx.lineTo(sx + wobble + hw, ty + seg * 0.8);
+      ctx.stroke();
+
+      // присоски
+      if (i % 2 === 0) {
+        const suckA = 0.55 + Math.sin(this.timer * 0.25 + i) * 0.2;
+        ctx.fillStyle = `rgba(0,230,170,${suckA})`;
+        ctx.beginPath(); ctx.arc(sx + wobble - hw * 0.6, ty + seg * 0.5, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(sx + wobble + hw * 0.6, ty + seg * 0.5, 3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    // кончик — яркий пульсирующий шар
+    const tipA = this.state === 'attack'
+      ? 0.95 + Math.sin(this.timer * 0.4) * 0.05
+      : 0.75;
+    const tipR = this.state === 'attack' ? 12 + Math.sin(this.timer * 0.4) * 4 : 9;
+    const tipGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, tipR * 2);
+    tipGrad.addColorStop(0, `rgba(200,255,240,${tipA})`);
+    tipGrad.addColorStop(0.4, `rgba(0,255,200,${tipA * 0.85})`);
+    tipGrad.addColorStop(1, 'rgba(0,200,150,0)');
+    ctx.fillStyle = tipGrad;
+    ctx.beginPath(); ctx.arc(sx, sy, tipR * 2, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = `rgba(220,255,245,${tipA})`;
+    ctx.beginPath(); ctx.arc(sx, sy, tipR * 0.5, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+// ── Whirlpool ─────────────────────────────────────────────────
+class Whirlpool {
+  constructor(cx, cy, radius, strength) {
+    this.cx = cx; this.cy = cy;
+    this.radius = radius;
+    this.strength = strength;
+    this.angle = 0;
+    // орбитальные частицы
+    this.particles = [];
+    for (let i = 0; i < 14; i++) {
+      this.particles.push({
+        angle:  Math.random() * Math.PI * 2,
+        r:      radius * (0.22 + Math.random() * 0.68),
+        speed:  0.028 + Math.random() * 0.045,
+        alpha:  0.25 + Math.random() * 0.45,
+        size:   1 + Math.random() * 2.2,
+      });
+    }
+  }
+
+  update() {
+    this.angle += 0.030;
+    this.particles.forEach(p => {
+      p.angle += p.speed;
+      p.r -= 0.10; // медленно засасывает к центру
+      if (p.r < this.radius * 0.08) {
+        p.r = this.radius * (0.55 + Math.random() * 0.40);
+        p.angle = Math.random() * Math.PI * 2;
+      }
+    });
+  }
+
+  applyTo(player) {
+    const dx = (player.x + player.w / 2) - this.cx;
+    const dy = (player.y + player.h / 2) - this.cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > this.radius || dist < 1) return;
+    const factor = (1 - dist / this.radius) * this.strength;
+    player.vx += -dx * factor * 0.5 + (-dy / dist) * factor * 0.6;
+    player.vy += -dy * factor * 0.5 + (dx / dist) * factor * 0.6;
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.cx - camX;
+    const sy = this.cy - camY;
+    const R = this.radius;
+
+    ctx.save();
+
+    // ── 1. внешнее рассеянное свечение ──
+    const outerG = ctx.createRadialGradient(sx, sy, R * 0.25, sx, sy, R);
+    outerG.addColorStop(0,   'rgba(10,130,255,0.20)');
+    outerG.addColorStop(0.55,'rgba(0,70,200,0.10)');
+    outerG.addColorStop(1,   'rgba(0,20,140,0)');
+    ctx.fillStyle = outerG;
+    ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI * 2); ctx.fill();
+
+    // ── 2. концентрические кольца ──
+    for (let ring = 0; ring < 4; ring++) {
+      const rr = R * (0.30 + ring * 0.195);
+      const alpha = 0.22 - ring * 0.045;
+      ctx.strokeStyle = `rgba(50,165,255,${alpha})`;
+      ctx.lineWidth = ring === 0 ? 1.5 : 1;
+      ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // ── 3. спиральные рукава (4 штуки, каждый — отдельная дуга) ──
+    const ARMS = 4;
+    const STEPS = 48;
+    for (let arm = 0; arm < ARMS; arm++) {
+      const baseAngle = this.angle * 1.15 + (arm / ARMS) * Math.PI * 2;
+      ctx.beginPath();
+      let first = true;
+      for (let j = 0; j <= STEPS; j++) {
+        const t = j / STEPS;
+        const r  = R * (0.07 + t * 0.86);
+        const th = baseAngle + t * Math.PI * 1.9;  // закрутка ~342°
+        const px = sx + Math.cos(th) * r;
+        const py = sy + Math.sin(th) * r;
+        if (first) { ctx.moveTo(px, py); first = false; }
+        else ctx.lineTo(px, py);
+      }
+      // рукав от центра (яркий) к краю (тёмный)
+      const grad = ctx.createLinearGradient(sx, sy, sx + R * 0.9, sy);
+      grad.addColorStop(0,   `rgba(160,220,255,${0.55 - arm * 0.06})`);
+      grad.addColorStop(0.4, `rgba(40,150,255,${0.40 - arm * 0.05})`);
+      grad.addColorStop(1,   'rgba(0,60,200,0.05)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 2.2 - arm * 0.3;
+      ctx.stroke();
+    }
+
+    // ── 4. орбитальные частицы ──
+    this.particles.forEach(p => {
+      const px = sx + Math.cos(p.angle) * p.r;
+      const py = sy + Math.sin(p.angle) * p.r;
+      const fade = p.r / R;  // ближе к центру → прозрачнее
+      ctx.save();
+      ctx.globalAlpha = p.alpha * (0.3 + fade * 0.7);
+      ctx.fillStyle = `rgba(120,210,255,1)`;
+      ctx.beginPath(); ctx.arc(px, py, p.size, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    });
+
+    // ── 5. тёмное ядро — воронка ──
+    const core = ctx.createRadialGradient(sx, sy, 0, sx, sy, R * 0.28);
+    core.addColorStop(0,   'rgba(0,3,18,0.92)');
+    core.addColorStop(0.55,'rgba(0,15,50,0.65)');
+    core.addColorStop(1,   'rgba(0,35,110,0)');
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(sx, sy, R * 0.28, 0, Math.PI * 2); ctx.fill();
+
+    // ── 6. яркая центральная точка ──
+    const pulseA = 0.72 + Math.sin(this.angle * 4) * 0.28;
+    const cg = ctx.createRadialGradient(sx, sy, 0, sx, sy, 9);
+    cg.addColorStop(0,  `rgba(200,240,255,${pulseA})`);
+    cg.addColorStop(0.5,`rgba(80,190,255,${pulseA * 0.6})`);
+    cg.addColorStop(1,   'rgba(0,100,200,0)');
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(sx, sy, 9, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+// ── VerticalCurrent ───────────────────────────────────────────
+// forceY < 0 = upward,  forceY > 0 = downward
+class VerticalCurrent {
+  constructor(x, y, w, h, forceY) {
+    this.x = x; this.y = y; this.w = w; this.h = h;
+    this.forceY = forceY;
+    this.pulse = 0;
+    this.flowOffset = 0;
+  }
+
+  update() {
+    this.pulse += 0.05;
+    this.flowOffset = (this.flowOffset + Math.abs(this.forceY) * 2.5) % 80;
+  }
+
+  applyTo(player) {
+    if (player.x + player.w > this.x && player.x < this.x + this.w &&
+        player.y + player.h > this.y && player.y < this.y + this.h) {
+      player.vy += this.forceY;
+    }
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.x - camX;
+    const sy = this.y - camY;
+    const goUp = this.forceY < 0;
+
+    ctx.save();
+    const g = ctx.createLinearGradient(0, goUp ? sy + this.h : sy, 0, goUp ? sy : sy + this.h);
+    g.addColorStop(0,   'rgba(60,220,180,0)');
+    g.addColorStop(0.3, 'rgba(60,220,180,0.13)');
+    g.addColorStop(0.7, 'rgba(60,220,180,0.20)');
+    g.addColorStop(1,   'rgba(60,220,180,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(sx, sy, this.w, this.h);
+
+    ctx.fillStyle = `rgba(100,240,200,${0.32 + Math.sin(this.pulse) * 0.08})`;
+    ctx.font = '17px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const arr = goUp ? '↑' : '↓';
+    const offset = goUp ? -(this.flowOffset % 80) : (this.flowOffset % 80);
+    for (let ay = sy + offset; ay < sy + this.h + 80; ay += 50) {
+      if (ay > sy && ay < sy + this.h) ctx.fillText(arr, sx + this.w / 2, ay);
+    }
+    ctx.restore();
+  }
+}
+
+// ── Bubble ────────────────────────────────────────────────────
+class Bubble {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.w = 44; this.h = 44;
+    this.used = false;
+    this.rechargeTime = 280;
+    this.rechargeTimer = 0;
+    this.pulse = Math.random() * Math.PI * 2;
+  }
+
+  get cx() { return this.x + this.w / 2; }
+  get cy() { return this.y + this.h / 2; }
+
+  update() {
+    this.pulse += 0.038;
+    if (this.used) {
+      this.rechargeTimer++;
+      if (this.rechargeTimer >= this.rechargeTime) { this.used = false; this.rechargeTimer = 0; }
+    }
+  }
+
+  tryUse(player) {
+    if (this.used) return;
+    if (player.x + player.w > this.x && player.x < this.x + this.w &&
+        player.y + player.h > this.y && player.y < this.y + this.h) {
+      player.vy = -14;
+      player.vx *= 0.38;
+      player.canDoubleJump = true;
+      this.used = true;
+      this.rechargeTimer = 0;
+      for (let i = 0; i < 18; i++) {
+        const a = Math.random() * Math.PI * 2, spd = 1 + Math.random() * 2.5;
+        player.trailParticles.push({
+          x: this.cx, y: this.cy,
+          vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - 2.5,
+          life: 28 + Math.random() * 18, maxLife: 46, dj: true,
+        });
+      }
+    }
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.cx - camX;
+    const sy = this.cy - camY;
+    const r = 20;
+
+    ctx.save();
+
+    if (this.used) {
+      const progress = this.rechargeTimer / this.rechargeTime;
+      ctx.globalAlpha = 0.12 + progress * 0.15;
+      ctx.strokeStyle = '#40c0ff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = '#80e0ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(sx, sy, r, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2); ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    const sc = 1 + Math.sin(this.pulse) * 0.06;
+    ctx.save();
+    ctx.scale(sc, sc);
+    const rx = sx / sc, ry = sy / sc;
+
+    // внешнее свечение — очень прозрачное
+    const glow = ctx.createRadialGradient(rx, ry, 0, rx, ry, r * 2.8);
+    glow.addColorStop(0, 'rgba(80,200,255,0.10)');
+    glow.addColorStop(1, 'rgba(80,200,255,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(rx, ry, r * 2.8, 0, Math.PI * 2); ctx.fill();
+
+    // основной шар — прозрачный, чисто круглый
+    const bg = ctx.createRadialGradient(rx - r * 0.3, ry - r * 0.3, 1, rx, ry, r);
+    bg.addColorStop(0,   'rgba(220,245,255,0.28)');
+    bg.addColorStop(0.45,'rgba(100,200,255,0.14)');
+    bg.addColorStop(0.85,'rgba(40,120,220,0.08)');
+    bg.addColorStop(1,   'rgba(20,80,180,0.03)');
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.arc(rx, ry, r, 0, Math.PI * 2); ctx.fill();
+
+    // обводка — тонкая, полупрозрачная
+    ctx.strokeStyle = 'rgba(140,220,255,0.38)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(rx, ry, r, 0, Math.PI * 2); ctx.stroke();
+
+    // блик — маленький, чёткий
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath(); ctx.arc(rx - r * 0.35, ry - r * 0.35, r * 0.18, 0, Math.PI * 2); ctx.fill();
+
+    // стрелка ↑
+    ctx.globalAlpha = 0.40;
+    ctx.fillStyle = '#c0eeff';
+    ctx.font = `bold ${Math.round(r * 0.85)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('↑', rx, ry + 1);
+    ctx.restore();
+
     ctx.restore();
   }
 }

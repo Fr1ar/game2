@@ -99,55 +99,115 @@ const L1 = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Level 2  "Водный сон"  — low gravity, slow & floaty
+// Level 2  "Водный сон"  — ocean inertia, global wave, 4 sections
 // ─────────────────────────────────────────────────────────────
 const L2 = {
   name: 'Водный сон',
   width: 2560, height: 720,
-  bgColors: ['#020818', '#040e1a', '#061428'],
-  playerStart: { x: 80, y: 580 },
+  bgColors: ['#010a1a', '#020e22', '#03122e'],
+  playerStart: { x: 80, y: 510 },
   deathY: 730,
+  isOcean: true,
+
+  // водная физика: максимальная инерция, слабый контроль
   physics: {
     gravity:   0.20,
     jumpForce: 9,
     djForce:   8,
-    moveSpeed: 3.0,
-    friction:  0.90,
+    moveSpeed: 2.0,
+    friction:  0.97,
   },
 
+  // глобальная волна: период ~150 кадров, сила ±0.45
+  oceanWave: { period: 150, strength: 0.45 },
+
+  // зона глубины: y > 570 (мировые координаты) — усиленная инерция
+  depthZone: { startY: 570, friction: 0.97 },
+
   platforms: [
-    new Platform(0,    660, 2560, 60, '#0a1830'),
-    new Platform(90,   540, 160, 18, '#102440'),
-    new Platform(290,  440, 140, 18, '#102440'),
-    new Platform(110,  340, 120, 18, '#102440'),
-    new Platform(320,  250, 140, 18, '#102440'),
-    new Platform(500,  350, 160, 18, '#102440'),
-    new Platform(680,  250, 140, 18, '#102440'),
-    new Platform(860,  170, 130, 18, '#102440'),
-    new Platform(1020, 270, 140, 18, '#102440'),
-    new Platform(1180, 370, 160, 18, '#102440'),
-    new Platform(1340, 270, 140, 18, '#102440'),
-    new Platform(1500, 180, 120, 18, '#102440'),
-    new Platform(1650, 290, 140, 18, '#102440'),
-    new Platform(1820, 400, 160, 18, '#102440'),
-    new Platform(2000, 310, 140, 18, '#102440'),
-    new Platform(2180, 430, 160, 18, '#102440'),
-    new Platform(2360, 530, 180, 18, '#102440'),
+    // ── дно (видимое)
+    new Platform(0, 690, 2560, 30, '#030f1e'),
+
+    // ── Секция 1 (x:0–620) — обучение, но уже уже
+    // y555 +185→y370  −175→y545  (точные прыжки с первых шагов)
+    new Platform(0,   555, 220, 18, '#0a2535'),   // старт
+    new Platform(368, 370, 82,  18, '#0c2d40'),   // +185 — точный одиночный
+    new Platform(558, 545, 82,  18, '#0a2535'),   // спуск
+
+    // ── Секция 2 (x:620–1260) — волна, вихрь, пределы одиночного
+    // y545 +125→y420  +195→y225  −220→y445  +200→y245
+    new Platform(668,  420, 80,  18, '#0c2d40'),
+    new Platform(848,  225, 76,  18, '#0d3550'),   // +195, почти максимум
+    new Platform(1008, 445, 80,  18, '#0a2535'),
+    new Platform(1172, 245, 76,  18, '#0d3550'),   // +200, на пределе
+
+    // ── Секция 3 (x:1260–1860) — двойной вихрь, вертикальный вызов
+    // y245 −225→y470  +195→y275  −230→y505  +337→y168 (двойной!)
+    new Platform(1298, 470, 82,  18, '#0a2535'),
+    new Platform(1462, 275, 76,  18, '#0d3550'),   // +195, точный одиночный
+    new Platform(1618, 505, 78,  18, '#0a2535'),
+    new Platform(1755, 168, 74,  18, '#0f3d60'),   // +337 — двойной прыжок с y505!
+
+    // ── Секция 4 (x:1860–2560) — глубина, щупальце, финал
+    // y168 −435→y603  −55→y658  +270→y388  +196→y192  −192→y384
+    new Platform(1838, 603, 82,  18, '#061828'),   // падение в глубину
+    new Platform(2005, 658, 100, 18, '#050f1c'),   // у дна — щупальце здесь
+    new Platform(2162, 388, 82,  18, '#0a2535'),   // двойной прыжок +270
+    new Platform(2352, 192, 130, 18, '#0d3550'),   // высоко — расширена
+    new Platform(2502, 384, 80,  18, '#0c2d40'),   // к порталу
   ],
 
   shards: [
-    new Shard(302, 410),   // easy — on 2nd platform
-    new Shard(872, 140),   // medium — near top of vertical climb
-    new Shard(1512, 150),  // hard — highest ceiling reach
+    new Shard(399,  344),   // S1 — центр платф.(368,370,82)
+    new Shard(1120, 310),   // S2 — в первом вихре (между сек.2 и сек.3)
+    new Shard(2078, 630),   // S3 — ближе к правому краю платф.(2005,658,100)
   ],
 
   hazards: [],
 
   checkpoints: [
-    new Checkpoint(1025, 232),
+    new Checkpoint(1331, 430),  // 1й — центр платф.(1298,470,82)
+    new Checkpoint(2195, 348),  // 2й — центр платф.(2162,388,82), до последней медузы
   ],
 
-  portal: new Portal(2374, 458),
+  portal: new Portal(2528, 312),
+
+  // ── Медузы (4 штуки — сложнее)
+  jellies: [
+    new Jellyfish(470,  315),   // сек.1 — перед высокой платформой
+    new Jellyfish(1025, 345),   // сек.2 — на спуске
+    new Jellyfish(1635, 400),   // сек.3 — у нижней перед двойным
+    new Jellyfish(2482, 155),   // сек.4 — правый край платф.(2352,192,130)
+  ],
+
+  // ── Стаи рыб
+  fishSchools: [
+    new FishSchool(775,  340, 200, 80),
+    new FishSchool(1390, 410, 240, 90),
+  ],
+
+  // ── Щупальце
+  tentacles: [
+    new Tentacle(2031, 692),
+  ],
+
+  // ── Два вихря
+  whirlpools: [
+    new Whirlpool(1120, 320, 108, 0.13),  // сек.2/3 — S2 внутри
+    new Whirlpool(1660, 410,  92, 0.12),  // сек.3 — второй вихрь, у нижней платф.
+  ],
+
+  // ── Вертикальные потоки (центр по платформам)
+  verticalCurrents: [
+    new VerticalCurrent(1462, 288, 68, 215, -0.50),  // ↑ центр платф.(1462,275,76)
+    new VerticalCurrent(1847, 445, 68, 238,  0.44),  // ↓ центр платф.(1838,603,82)
+  ],
+
+  // ── Пузыри
+  bubbles: [
+    new Bubble(686,  362),   // сек.2 — подъём к высокой
+    new Bubble(1852, 558),   // сек.4 — выход из глубины
+  ],
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -225,42 +285,61 @@ const L4 = {
     // solid floor — no gaps (spring must not fall into pits)
     new Platform(0, 660, 3840, 60, '#200808'),
 
-    // mid platforms
-    new Platform(180,  560, 160, 18, '#2a1010'),
-    new Platform(380,  480, 140, 18, '#2a1010'),
-    new Platform(560,  560, 160, 18, '#2a1010'),
-    new Platform(880,  500, 160, 18, '#2a1010'),
-    new Platform(1060, 420, 140, 18, '#2a1010'),
-    new Platform(1240, 500, 160, 18, '#2a1010'),
-    new Platform(1440, 560, 160, 18, '#2a1010'),
+    // mid platforms — first shifted right & lowered; later ones raised
+    new Platform(560,  400, 140, 18, '#2a1010'),
+    new Platform(880,  360, 160, 18, '#2a1010'),  // raised
+    new Platform(1060, 240, 140, 18, '#2a1010'),  // raised — teleport portal at center
+    new Platform(1240, 160, 160, 18, '#2a1010'),  // raised high
+    new Platform(1440,  80, 160, 18, '#2a1010'),  // raised high — teleport portal at center
     new Platform(1740, 520, 160, 18, '#2a1010'),
-    new Platform(1920, 440, 140, 18, '#2a1010'),
-    new Platform(2100, 520, 160, 18, '#2a1010'),
+    new Platform(2100, 380, 160, 18, '#2a1010'),  // raised
     // no platforms in spring shard zone (x≈2300) for clean vertical corridor
     new Platform(2480, 520, 160, 18, '#2a1010'),
     new Platform(2760, 500, 160, 18, '#2a1010'),
-    new Platform(2960, 420, 140, 18, '#2a1010'),
-    new Platform(3140, 340, 120, 18, '#2a1010'),
-    new Platform(3460, 500, 160, 18, '#2a1010'),
-    new Platform(3650, 580, 190, 18, '#2a1010'),
+    // platforms near shard 3 (3152, 310) and penultimate platform removed — only reachable via spring
+    new Platform(3650, 420, 190, 18, '#2a1010'),  // final platform — lowered
   ],
 
   shards: [
-    new Shard(392,  450),  // easy — early level
+    new Shard(1120, 220),  // centered on third mid platform (1060..1200, top y=240)
     new Shard(2312, 300),  // hard — floating high, only via spring
     new Shard(3152, 310),  // end — near portal
   ],
 
-  spring: new SpringJumper(2260, 630),
+  spring: undefined,  // assigned below so the teleport can reference it dynamically
+
+  teleportPortals: undefined,  // assigned below — destination tracks the spring's live position
+
+  bats: [
+    new Bat(1100, 320),         // early — hovering between start and first checkpoint
+    new Bat(2544, 493, true),   // mid-late — sitting on the nearest platform (2480, 520)
+    new Bat(3300, 260),         // late — hovering near the climb before the portal
+  ],
 
   hazards: [],
+
+  // leftward wind under shard 2 (2312, 300) — pushes the springing player off course
+  currents: [
+    new CurrentZone(2200, 2420, -0.95),
+  ],
 
   checkpoints: [
     new Checkpoint(1780, 482),
   ],
 
-  portal: new Portal(3660, 508),
+  portal: new Portal(3660, 348),
 };
+
+// L4 spring + teleport: the teleport's destination is computed live so it
+// always tracks the spring's current x (player lands 100 px to its left).
+L4.spring = new SpringJumper(200, 630);
+L4.teleportPortals = [
+  new TeleportPortal(
+    1760, 8,
+    () => L4.spring.x - 100,
+    () => 624,
+  ),
+];
 
 // ─────────────────────────────────────────────────────────────
 // Level 5  "Сон Падения"  — gravity inversion toggle (↓/S)
