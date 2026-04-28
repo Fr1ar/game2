@@ -204,6 +204,12 @@ class Checkpoint {
 
   draw(ctx, camX, camY) {
     const sx = this.x - camX, sy = this.y - camY;
+    ctx.save();
+    if (this.drawAngle) {
+      ctx.translate(sx + this.w / 2, sy + this.h / 2);
+      ctx.rotate(this.drawAngle);
+      ctx.translate(-(sx + this.w / 2), -(sy + this.h / 2));
+    }
     // pole
     ctx.fillStyle = '#443366';
     ctx.fillRect(sx + 6, sy, 4, this.h);
@@ -218,6 +224,7 @@ class Checkpoint {
     ctx.lineTo(sx + 10, sy + 16);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
   }
 }
 
@@ -493,5 +500,110 @@ class TeleportPortal {
       ctx.fillText('ВОЙТИ', sx, sy + r + 4);
       ctx.restore();
     }
+  }
+}
+
+// ── SpringJumper ─────────────────────────────────────────────
+class SpringJumper {
+  constructor(x, y) {
+    this.startX = x; this.startY = y;
+    this.x = x; this.y = y;
+    this.w = 44; this.h = 28;
+    this.vx = 0; this.vy = 0;
+    this.onGround = false;
+    this.squish = 0;
+    this.squishTimer = 0;
+    this.LAUNCH = 26;
+  }
+
+  get cx() { return this.x + this.w / 2; }
+  get cy() { return this.y + this.h / 2; }
+
+  update(player, platforms, deathY) {
+    this.vy += 0.55;
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vx *= 0.85;
+
+    if (this.y > deathY) { this.x = this.startX; this.y = this.startY; this.vx = 0; this.vy = 0; }
+
+    this.onGround = false;
+    for (const p of platforms) {
+      if (!p.active) continue;
+      if (this.x + this.w > p.x && this.x < p.x + p.w &&
+          this.y + this.h > p.y && this.y + this.h < p.y + p.h + 20 && this.vy >= 0) {
+        this.y = p.y - this.h; this.vy = 0; this.onGround = true;
+      }
+    }
+
+    const pHit = player.x < this.x + this.w && player.x + player.w > this.x &&
+                 player.y + player.h > this.y + 4 && player.y < this.y + this.h;
+    if (pHit) {
+      const fromLeft = player.cx < this.cx;
+      this.vx += fromLeft ? 3.5 : -3.5;
+    }
+
+    const onTop = player.x + player.w > this.x + 4 && player.x < this.x + this.w - 4 &&
+                  player.y + player.h >= this.y && player.y + player.h <= this.y + 16 &&
+                  player.vy > 0;
+    if (onTop && this.squishTimer === 0) {
+      player.vy = -this.LAUNCH;
+      player.vx = 0;
+      player.onGround = false;
+      player.canDoubleJump = true;
+      this.squishTimer = 18;
+      SoundFX.springBoing();
+    }
+
+    if (this.squishTimer > 0) {
+      this.squishTimer--;
+      const t = 1 - this.squishTimer / 18;
+      this.squish = (t < 0.5 ? t * 2 : (1 - t) * 2) * 0.55;
+    } else {
+      this.squish = 0;
+    }
+  }
+
+  resetToCheckpoint(cpX, cpY) {
+    this.x = cpX + 60; this.y = cpY;
+    this.startX = this.x; this.startY = this.y;
+    this.vx = 0; this.vy = 0;
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.x - camX, sy = this.y - camY;
+    const sh = this.h * (1 - this.squish * 0.55);
+    const sw = this.w * (1 + this.squish * 0.3);
+    const ox = (sw - this.w) / 2;
+    const oy = this.h - sh;
+
+    ctx.save();
+    ctx.fillStyle = '#cc2200';
+    ctx.fillRect(sx - ox, sy + oy + sh * 0.55, sw, sh * 0.45);
+    ctx.fillStyle = 'rgba(255,100,60,0.4)';
+    ctx.fillRect(sx - ox + 3, sy + oy + sh * 0.6, 6, sh * 0.25);
+    ctx.fillStyle = '#ffe030';
+    ctx.fillRect(sx - ox, sy + oy, sw, sh * 0.58);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(sx - ox, sy + oy, sw, sh * 0.58); ctx.clip();
+    ctx.strokeStyle = '#ff8800'; ctx.lineWidth = 3;
+    for (let i = -2; i < 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(sx - ox + i * 12, sy + oy);
+      ctx.lineTo(sx - ox + i * 12 + sh * 0.58, sy + oy + sh * 0.58);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.fillStyle = '#dd1100';
+    for (let i = 0; i < 3; i++) {
+      const cx2 = sx - ox + sw * 0.5, cy2 = sy + oy + 2 + i * 5;
+      ctx.beginPath();
+      ctx.moveTo(cx2 - 8, cy2 + 4); ctx.lineTo(cx2, cy2); ctx.lineTo(cx2 + 8, cy2 + 4);
+      ctx.lineWidth = 1.5; ctx.strokeStyle = '#ff4422'; ctx.stroke();
+    }
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(sx - ox + 2, sy + oy + sh + 1, sw, 3);
+    ctx.restore();
   }
 }

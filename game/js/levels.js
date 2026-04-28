@@ -195,18 +195,8 @@ const L4 = {
   chaser: { x: 20, y: 580, startDelay: 120 },  // spawn behind player, on ground; freeze 2s before chasing
 
   platforms: [
-    // ground — mostly continuous but with some gaps
-    new Platform(0,    660, 800,  60, '#200808'),
-    new Platform(860,  660, 800,  60, '#200808'),
-    new Platform(1720, 660, 800,  60, '#200808'),
-    new Platform(2580, 660, 800,  60, '#200808'),
-    new Platform(3440, 660, 400,  60, '#200808'),
-
-    // gap bridges
-    new Platform(780,  610, 120, 18, '#2a1010'),
-    new Platform(1640, 600, 120, 18, '#2a1010'),
-    new Platform(2500, 600, 120, 18, '#2a1010'),
-    new Platform(3360, 600, 120, 18, '#2a1010'),
+    // solid floor — no gaps (spring must not fall into pits)
+    new Platform(0, 660, 3840, 60, '#200808'),
 
     // mid platforms
     new Platform(180,  560, 160, 18, '#2a1010'),
@@ -219,7 +209,7 @@ const L4 = {
     new Platform(1740, 520, 160, 18, '#2a1010'),
     new Platform(1920, 440, 140, 18, '#2a1010'),
     new Platform(2100, 520, 160, 18, '#2a1010'),
-    new Platform(2300, 440, 140, 18, '#2a1010'),
+    // no platforms in spring shard zone (x≈2300) for clean vertical corridor
     new Platform(2480, 520, 160, 18, '#2a1010'),
     new Platform(2760, 500, 160, 18, '#2a1010'),
     new Platform(2960, 420, 140, 18, '#2a1010'),
@@ -229,10 +219,12 @@ const L4 = {
   ],
 
   shards: [
-    new Shard(392, 450),   // easy — early level
-    new Shard(2312, 410),  // mid level, on elevated platform
-    new Shard(3152, 310),  // hard — highest point near end
+    new Shard(392,  450),  // easy — early level
+    new Shard(2312, 300),  // hard — floating high, only via spring
+    new Shard(3152, 310),  // end — near portal
   ],
+
+  spring: new SpringJumper(2260, 630),
 
   hazards: [],
 
@@ -305,4 +297,69 @@ const L5 = {
   portal: new Portal(2112, 488),
 };
 
-const LEVELS = [L1, L2, L3, L4, L5];
+// ─────────────────────────────────────────────────────────────
+// Level 6  "Горизонтальный сон"  — horizontal gravity
+// ←/→ flip active wall, ↑/↓ move along wall, Space = jump
+// ─────────────────────────────────────────────────────────────
+const L6 = {
+  name: 'Горизонтальный сон',
+  width: 1280, height: 2700,
+  bgColors: ['#040c18', '#081424', '#0c1c30'],
+  playerStart: { x: 28, y: 100 },
+  deathY: 2760, deathMinY: -60,
+  physics: { gravity: 0.35, jumpForce: 18, djForce: 15, moveSpeed: 4.5, friction: 0.88 },
+  horizontalGravity: true, initialGravityDir: -1,
+
+  platforms: [
+    // boundary walls (left=floor at gravityDir=-1, right=floor at gravityDir=+1)
+    new Platform(0,    0,    28,   2700, '#1a3a28'),  // left wall
+    new Platform(1252, 0,    28,   2700, '#3a2a1a'),  // right wall
+    new Platform(0,    -60,  1280, 60,   '#0a1020'),  // top boundary
+    new Platform(0,    2700, 1280, 60,   '#0a1020'),  // bottom boundary
+
+    // Column A — gap y=820-960
+    new Platform(420,  660, 28, 160, '#1a2a3a'),
+    new Platform(420,  960, 28, 300, '#1a2a3a'),
+
+    // Column B — gap y=1000-1150
+    new Platform(780,  660, 28, 340, '#1a2a3a'),
+    new Platform(780, 1150, 28, 150, '#1a2a3a'),
+
+    // Column C — gap y=1520-1680
+    new Platform(350, 1340, 28, 180, '#1a2a3a'),
+    new Platform(350, 1680, 28, 280, '#1a2a3a'),
+
+    // Column D — gap y=1460-1620
+    new Platform(820, 1340, 28, 120, '#1a2a3a'),
+    new Platform(820, 1620, 28, 340, '#1a2a3a'),
+
+    // Column E — gap y=2200-2360
+    new Platform(280, 2040, 28, 160, '#1a2a3a'),
+    new Platform(280, 2360, 28, 220, '#1a2a3a'),
+
+    // Column F — gap y=2140-2300
+    new Platform(620, 2040, 28, 100, '#1a2a3a'),
+    new Platform(620, 2300, 28, 280, '#1a2a3a'),
+
+    // Column G — gap y=2080-2240
+    new Platform(960, 2040, 28,  40, '#1a2a3a'),
+    new Platform(960, 2240, 28, 340, '#1a2a3a'),
+  ],
+
+  shards: [
+    new Shard(30,   286),   // left wall, early — easy
+    new Shard(1228, 1058),  // right wall, mid  — medium
+    new Shard(30,   2204),  // left wall, late  — hard
+  ],
+
+  hazards: [],
+
+  checkpoints: [
+    Object.assign(new Checkpoint(28, 1100), { drawAngle: Math.PI / 2 }),
+    Object.assign(new Checkpoint(28, 2020), { drawAngle: Math.PI / 2 }),
+  ],
+
+  portal: new Portal(1204, 2514),
+};
+
+const LEVELS = [L1, L2, L3, L4, L5, L6];

@@ -40,6 +40,10 @@ function loadLevel(idx) {
   level = LEVELS[idx];
   player = new Player(level.playerStart.x, level.playerStart.y);
   player.setPhysics(level.physics || {});
+  if (level.horizontalGravity) {
+    player.gravityAxis = 'x';
+    player.gravityDir  = level.initialGravityDir !== undefined ? level.initialGravityDir : -1;
+  }
 
   // reset all fade platforms
   level.platforms.forEach(p => {
@@ -54,6 +58,7 @@ function loadLevel(idx) {
   }
 
   if (level.teleportPortals) level.teleportPortals.forEach(tp => { tp.cooldown = 0; });
+  if (level.spring) { level.spring.x = level.spring.startX; level.spring.y = level.spring.startY; level.spring.vx = 0; level.spring.vy = 0; }
 
   checkpointX = level.playerStart.x;
   checkpointY = level.playerStart.y;
@@ -176,7 +181,12 @@ function update() {
     if (messageTimer > 55 && Input.wasJumped()) {
       player.reset(checkpointX, checkpointY);
       player.setPhysics(level.physics || {});
+      if (level.horizontalGravity) {
+        player.gravityAxis = 'x';
+        player.gravityDir  = level.initialGravityDir !== undefined ? level.initialGravityDir : -1;
+      }
       if (level.chaser) chaser = new Chaser(level.chaser.x, level.chaser.y, level.chaser.startDelay || 0);
+      if (level.spring) level.spring.resetToCheckpoint(checkpointX, checkpointY);
       state = State.PLAYING;
     }
     Input.flush();
@@ -184,6 +194,17 @@ function update() {
   }
 
   // --- PLAYING ---
+
+  // horizontal gravity wall-flip (level 6)
+  if (level.horizontalGravity) {
+    gravityFlipCooldown--;
+    if (gravityFlipCooldown <= 0) {
+      const toLeft  = Input.wasPressed('ArrowLeft')  || Input.wasPressed('KeyA');
+      const toRight = Input.wasPressed('ArrowRight') || Input.wasPressed('KeyD');
+      if (toLeft)  { player.gravityDir = -1; player.vx = 0; player.canDoubleJump = true; gravityFlipCooldown = 18; SoundFX.gravityFlip(); }
+      else if (toRight) { player.gravityDir =  1; player.vx = 0; player.canDoubleJump = true; gravityFlipCooldown = 18; SoundFX.gravityFlip(); }
+    }
+  }
 
   // gravity toggle (level 5)
   if (level.gravityToggle) {
@@ -213,6 +234,8 @@ function update() {
 
   // teleport portals
   if (level.teleportPortals) level.teleportPortals.forEach(tp => { tp.update(); tp.checkTeleport(player); });
+
+  if (level.spring) level.spring.update(player, level.platforms, level.deathY);
 
   // player update
   player.update(level.platforms, level.hazards);
@@ -295,6 +318,7 @@ function draw() {
   level.shards.forEach(s     => s.draw(ctx, cam.x, cam.y));
   level.portal.draw(ctx, cam.x, cam.y);
   if (level.teleportPortals) level.teleportPortals.forEach(tp => tp.draw(ctx, cam.x, cam.y));
+  if (level.spring) level.spring.draw(ctx, cam.x, cam.y);
   if (chaser) chaser.draw(ctx, cam.x, cam.y);
   player.draw(ctx, cam.x, cam.y);
 
@@ -314,12 +338,15 @@ function draw() {
     ctx.font = 'italic 17px sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
-    ctx.fillText(`Сон ${levelIndex + 1}/5 — ${level.name}`, W - 18, 18);
+    ctx.fillText(`Сон ${levelIndex + 1}/6 — ${level.name}`, W - 18, 18);
     ctx.restore();
   }
 
   // gravity indicator for level 5
   if (level.gravityToggle) drawGravityIndicator();
+
+  // wall indicator for level 6
+  if (level.horizontalGravity) drawWallIndicator();
 
   // chaser proximity warning
   if (chaser) drawChaserWarning();
@@ -361,6 +388,32 @@ function drawGravityIndicator() {
   ctx.fillStyle = '#9080c0';
   ctx.font = '11px sans-serif';
   ctx.fillText('↓/S — flip', x, y + 26);
+  ctx.restore();
+}
+
+function drawWallIndicator() {
+  const left = player.gravityDir < 0;
+  const t = Date.now() / 400;
+  const pulse = 0.7 + Math.sin(t) * 0.3;
+  const x = W - 52, y = H - 52;
+
+  ctx.save();
+  ctx.globalAlpha = 0.8 * pulse;
+  ctx.fillStyle = left ? '#40c0ff' : '#ff8040';
+  ctx.beginPath();
+  ctx.arc(x, y, 18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(left ? '←' : '→', x, y);
+
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = '#9080c0';
+  ctx.font = '11px sans-serif';
+  ctx.fillText('←/→ — стена', x, y + 26);
   ctx.restore();
 }
 
@@ -526,19 +579,20 @@ function drawCutscene() {
     ctx.fill();
   }
 
-  // dream particles fading away above sleeper
-  if (t < 200) {
-    const fade = 1 - t / 200;
-    for (let i = 0; i < 6; i++) {
-      const pa = (i / 6) * Math.PI * 2 + t * 0.02;
-      const pr = 30 + Math.sin(t * 0.05 + i) * 8;
+  // dream particles drifting above sleeper throughout cutscene
+  {
+    const fade = t < 380 ? 1 : Math.max(0, 1 - (t - 380) / 80);
+    for (let i = 0; i < 8; i++) {
+      const pa = (i / 8) * Math.PI * 2 + t * 0.015;
+      const drift = (t * 0.4 + i * 40) % 120;
+      const pr = 28 + Math.sin(t * 0.04 + i) * 10;
       const px = ch_x + Math.cos(pa) * pr;
-      const py = ch_y - 30 + Math.sin(pa) * pr * 0.4;
+      const py = ch_y - 20 - drift;
       ctx.save();
-      ctx.globalAlpha = fade * 0.5;
-      ctx.fillStyle = '#a080ff';
+      ctx.globalAlpha = fade * (0.5 - drift / 240) * (0.6 + Math.sin(t * 0.07 + i) * 0.2);
+      ctx.fillStyle = i % 2 === 0 ? '#a080ff' : '#80c0ff';
       ctx.beginPath();
-      ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+      ctx.arc(px, py, 2 + Math.sin(t * 0.05 + i) * 0.8, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -620,7 +674,7 @@ function drawIntroScreen() {
   ctx.shadowBlur = 0;
   ctx.fillStyle = '#5a4888';
   ctx.font = '19px sans-serif';
-  ctx.fillText('5 снов. Каждый с уникальной физикой. Собери осколки. Проснись.', W/2, H/2 - 36);
+  ctx.fillText('6 снов. Каждый с уникальной физикой. Собери осколки. Проснись.', W/2, H/2 - 36);
 
   ctx.fillStyle = '#3e3060';
   ctx.font = '15px sans-serif';
@@ -630,6 +684,7 @@ function drawIntroScreen() {
     'Сон 3 — Ломаный (исчезающие платформы)',
     'Сон 4 — Кошмар (преследователь)',
     'Сон 5 — Падение (инверсия гравитации ↓/S)',
+    'Сон 6 — Горизонтальный (←/→ — стена, ↑/↓ — бег, Space — прыжок)',
   ];
   levels.forEach((l, i) => {
     ctx.fillText(l, W/2, H/2 + 20 + i * 24);
