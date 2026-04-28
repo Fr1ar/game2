@@ -18,85 +18,215 @@ class Platform {
 class Shard {
   constructor(x, y) {
     this.x = x; this.y = y;
-    this.w = 20; this.h = 20;
+    this.w = 40; this.h = 40;
     this.collected = false;
     this.angle = 0;
     this.pulse = 0;
-    this.particles = [];
+    this.bob = Math.random() * Math.PI * 2;  // random starting phase
+    this.sparkles = [];   // ambient floating sparkles
+    this.particles = [];  // collect burst
+    this._sparkTimer = 0;
   }
 
   get cx() { return this.x + this.w / 2; }
   get cy() { return this.y + this.h / 2; }
 
-  update(dt) {
-    this.angle += 0.04;
-    this.pulse += 0.07;
-    this.particles = this.particles.filter(p => p.life > 0);
-    this.particles.forEach(p => {
+  update() {
+    this.angle += 0.022;   // slow, majestic rotation
+    this.pulse += 0.055;
+    this.bob   += 0.038;
+
+    // spawn ambient sparkles while not collected
+    if (!this.collected) {
+      this._sparkTimer++;
+      if (this._sparkTimer >= 7) {
+        this._sparkTimer = 0;
+        const ang = Math.random() * Math.PI * 2;
+        const r   = 16 + Math.random() * 14;
+        const ml  = 30 + Math.random() * 25;
+        this.sparkles.push({
+          x: this.cx + Math.cos(ang) * r,
+          y: this.cy + Math.sin(ang) * r,
+          vx: (Math.random() - 0.5) * 0.4,
+          vy: -0.5 - Math.random() * 0.6,
+          life: ml, maxLife: ml,
+          r: 1 + Math.random() * 2,
+        });
+      }
+    }
+
+    this.sparkles = this.sparkles.filter(s => {
+      s.x += s.vx; s.y += s.vy; s.life--;
+      return s.life > 0;
+    });
+
+    this.particles = this.particles.filter(p => {
       p.x += p.vx; p.y += p.vy;
-      p.life -= 1;
-      p.vy += 0.05;
+      p.vx *= 0.95; p.vy *= 0.95;
+      p.vy -= 0.04;
+      p.life--;
+      return p.life > 0;
     });
   }
 
   collect() {
     this.collected = true;
-    for (let i = 0; i < 20; i++) {
-      const ang = Math.random() * Math.PI * 2;
-      const spd = 1 + Math.random() * 3;
+    const COLORS = ['#ffffff', '#b0eeff', '#d0b0ff', '#80d8ff', '#ffe080'];
+    for (let i = 0; i < 48; i++) {
+      const ang = (i / 48) * Math.PI * 2 + Math.random() * 0.25;
+      const spd = 1.2 + Math.random() * 5;
+      const ml  = 45 + Math.random() * 35;
       this.particles.push({
         x: this.cx, y: this.cy,
         vx: Math.cos(ang) * spd,
-        vy: Math.sin(ang) * spd - 2,
-        life: 30 + Math.random() * 20
+        vy: Math.sin(ang) * spd - 1.5,
+        life: ml, maxLife: ml,
+        r: i % 5 === 0 ? 5 : 1.5 + Math.random() * 2.5,
+        color: COLORS[i % COLORS.length],
       });
     }
   }
 
+  // 7-sided gem silhouette at radius r
+  _gemPath(ctx, r) {
+    ctx.moveTo(0, -r);
+    ctx.lineTo( r * 0.62, -r * 0.30);
+    ctx.lineTo( r * 0.80,  r * 0.32);
+    ctx.lineTo( r * 0.38,  r);
+    ctx.lineTo(-r * 0.38,  r);
+    ctx.lineTo(-r * 0.80,  r * 0.32);
+    ctx.lineTo(-r * 0.62, -r * 0.30);
+    ctx.closePath();
+  }
+
   draw(ctx, camX, camY) {
-    // draw burst particles even after collected
+    // ── collect burst particles ───────────────────────────────
     this.particles.forEach(p => {
-      const a = p.life / 50;
+      const a = Math.pow(p.life / p.maxLife, 1.6);
       ctx.save();
       ctx.globalAlpha = a;
-      ctx.fillStyle = '#a0e0ff';
+      ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.arc(p.x - camX, p.y - camY, 2, 0, Math.PI * 2);
+      ctx.arc(p.x - camX, p.y - camY, p.r, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     });
 
     if (this.collected) return;
 
-    const sx = this.cx - camX, sy = this.cy - camY;
-    const glow = 10 + Math.sin(this.pulse) * 5;
+    const bobY  = Math.sin(this.bob) * 6;
+    const pulse = Math.sin(this.pulse);
+    const sx = this.cx - camX;
+    const sy = this.cy - camY + bobY;
+    const R  = 18;  // gem radius
 
     ctx.save();
-    // glow
-    const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, glow * 2);
-    grad.addColorStop(0, 'rgba(160,224,255,0.6)');
-    grad.addColorStop(1, 'rgba(160,224,255,0)');
-    ctx.fillStyle = grad;
+
+    // ── far outer haze ────────────────────────────────────────
+    const hazeR = R * 3.8 + pulse * 6;
+    const hazeG = ctx.createRadialGradient(sx, sy, R, sx, sy, hazeR);
+    hazeG.addColorStop(0, `rgba(140,200,255,${0.12 + pulse * 0.05})`);
+    hazeG.addColorStop(0.5, `rgba(160,100,255,${0.06})`);
+    hazeG.addColorStop(1,   'rgba(80,40,200,0)');
+    ctx.fillStyle = hazeG;
     ctx.beginPath();
-    ctx.arc(sx, sy, glow * 2, 0, Math.PI * 2);
+    ctx.arc(sx, sy, hazeR, 0, Math.PI * 2);
     ctx.fill();
 
-    // crystal shape
+    // ── mid glow ─────────────────────────────────────────────
+    const midR = R * 2 + pulse * 4;
+    const midG = ctx.createRadialGradient(sx, sy, 0, sx, sy, midR);
+    midG.addColorStop(0, `rgba(220,245,255,${0.50 + pulse * 0.20})`);
+    midG.addColorStop(0.5, `rgba(160,220,255,0.20)`);
+    midG.addColorStop(1,   'rgba(120,160,255,0)');
+    ctx.fillStyle = midG;
+    ctx.beginPath();
+    ctx.arc(sx, sy, midR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── ambient sparkles ──────────────────────────────────────
+    this.sparkles.forEach(sp => {
+      const a = Math.pow(sp.life / sp.maxLife, 0.7) * 0.9;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#dff6ff';
+      ctx.beginPath();
+      ctx.arc(sp.x - camX, sp.y - camY + bobY, sp.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    // ── gem body ──────────────────────────────────────────────
     ctx.translate(sx, sy);
     ctx.rotate(this.angle);
-    ctx.fillStyle = '#c0eeff';
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.5;
+
+    // drop shadow
+    ctx.save();
+    ctx.translate(2, 3);
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#1a0040';
     ctx.beginPath();
-    ctx.moveTo(0, -10);
-    ctx.lineTo(6, -2);
-    ctx.lineTo(4, 8);
-    ctx.lineTo(0, 6);
-    ctx.lineTo(-4, 8);
-    ctx.lineTo(-6, -2);
+    this._gemPath(ctx, R);
+    ctx.fill();
+    ctx.restore();
+
+    // main gem fill — diagonal gradient (light → deep)
+    const bodyG = ctx.createLinearGradient(-R * 0.7, -R, R * 0.7, R);
+    bodyG.addColorStop(0,    '#f0faff');
+    bodyG.addColorStop(0.25, '#88d8ff');
+    bodyG.addColorStop(0.55, '#9070e8');
+    bodyG.addColorStop(1,    '#4020a0');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = bodyG;
+    ctx.beginPath();
+    this._gemPath(ctx, R);
+    ctx.fill();
+
+    // upper highlight facet (bright frosted cap)
+    ctx.fillStyle = `rgba(255,255,255,${0.5 + pulse * 0.15})`;
+    ctx.beginPath();
+    ctx.moveTo(0, -R);
+    ctx.lineTo( R * 0.62, -R * 0.30);
+    ctx.lineTo( R * 0.10, -R * 0.08);
+    ctx.lineTo(-R * 0.62, -R * 0.30);
     ctx.closePath();
     ctx.fill();
+
+    // side-left secondary highlight
+    ctx.fillStyle = 'rgba(200,240,255,0.22)';
+    ctx.beginPath();
+    ctx.moveTo(-R * 0.62, -R * 0.30);
+    ctx.lineTo(-R * 0.10, -R * 0.08);
+    ctx.lineTo(-R * 0.80,  R * 0.32);
+    ctx.closePath();
+    ctx.fill();
+
+    // inner pulsing core
+    const coreG = ctx.createRadialGradient(0, -R * 0.15, 0, 0, -R * 0.1, R * 0.65);
+    coreG.addColorStop(0, `rgba(255,255,255,${0.75 + pulse * 0.25})`);
+    coreG.addColorStop(0.5, `rgba(180,240,255,0.3)`);
+    coreG.addColorStop(1,   'rgba(160,100,255,0)');
+    ctx.fillStyle = coreG;
+    ctx.beginPath();
+    ctx.arc(0, -R * 0.1, R * 0.65, 0, Math.PI * 2);
+    ctx.fill();
+
+    // gem outline
+    ctx.strokeStyle = `rgba(255,255,255,${0.55 + pulse * 0.35})`;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    this._gemPath(ctx, R);
     ctx.stroke();
+
+    // inner structure lines (facet edges)
+    ctx.strokeStyle = 'rgba(210,245,255,0.28)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, -R);       ctx.lineTo(0,  R * 0.55); // vertical
+    ctx.moveTo(-R * 0.62, -R * 0.30); ctx.lineTo(R * 0.62, -R * 0.30); // girdle top
+    ctx.moveTo(-R * 0.80,  R * 0.32); ctx.lineTo(R * 0.80,  R * 0.32); // girdle bot
+    ctx.stroke();
+
     ctx.restore();
   }
 }
