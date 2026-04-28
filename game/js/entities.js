@@ -412,7 +412,6 @@ class CurrentZone {
     const w = ex - sx;
     const dir = this.force > 0;
     ctx.save();
-    // directional gradient, both edges fade softly over ~18% of width
     const g = ctx.createLinearGradient(sx, 0, ex, 0);
     if (dir) {
       g.addColorStop(0,    'rgba(80,200,255,0)');
@@ -552,6 +551,11 @@ class PulsingCurrentZone extends CurrentZone {
       }
     }
 
+=======
+    for (let ax = sx + 60; ax < ex - 20; ax += 120)
+      for (let ay = 110; ay < 640; ay += 120)
+        ctx.fillText(arr, ax, ay);
+>>>>>>> origin/main
     ctx.restore();
   }
 }
@@ -619,7 +623,99 @@ class TeleportPortal {
       ctx.lineTo(Math.cos(ang) * r * 0.85, Math.sin(ang) * r * 0.85); ctx.stroke();
     }
     ctx.restore();
+  }
+}
 
+// ── FanZone ───────────────────────────────────────────────────
+// Вентилятор: толкает игрока по оси X в зоне воздействия (Сон 6)
+// forceX > 0 — дует вправо, forceX < 0 — дует влево
+class FanZone {
+  constructor(x, y, w, h, forceX) {
+    this.x = x; this.y = y; this.w = w; this.h = h;
+    this.forceX = forceX;
+    this.pulse = 0;
+    this.bladeAngle = 0;
+  }
+
+  applyTo(player) {
+    if (player.x + player.w > this.x && player.x < this.x + this.w &&
+        player.y + player.h > this.y && player.y < this.y + this.h) {
+      player.vx += this.forceX;
+    }
+  }
+
+  update() {
+    this.pulse += 0.05;
+    this.bladeAngle += 0.14;
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.x - camX;
+    const sy = this.y - camY;
+    const blowRight = this.forceX > 0;
+
+    // ветровая зона — градиент в сторону дутья
+    const grd = ctx.createLinearGradient(
+      blowRight ? sx : sx + this.w, 0,
+      blowRight ? sx + this.w : sx, 0
+    );
+    grd.addColorStop(0,   `rgba(100,200,255,${0.14 + Math.sin(this.pulse) * 0.05})`);
+    grd.addColorStop(0.55, 'rgba(100,200,255,0.04)');
+    grd.addColorStop(1,   'rgba(100,200,255,0)');
+    ctx.save();
+    ctx.fillStyle = grd;
+    ctx.fillRect(sx, sy, this.w, this.h);
+
+    // стрелки-подсказки
+    ctx.globalAlpha = 0.28 + Math.sin(this.pulse * 1.4) * 0.10;
+    ctx.fillStyle = '#80d8ff';
+    ctx.font = '15px sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    const arr = blowRight ? '→' : '←';
+    for (let ax = sx + 70; ax < sx + this.w - 40; ax += 90) {
+      for (let ay = sy + 18; ay < sy + this.h - 8; ay += 32) {
+        ctx.fillText(arr, ax, ay);
+      }
+    }
+
+    // корпус вентилятора на стороне-источнике
+    const fanX = blowRight ? sx + 20 : sx + this.w - 20;
+    const fanY = sy + this.h / 2;
+    const R = Math.min(this.h / 2 - 6, 28);
+
+    ctx.globalAlpha = 1;
+    // корпус
+    ctx.fillStyle = '#0e2040';
+    ctx.beginPath();
+    ctx.arc(fanX, fanY, R + 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#2060a0';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // лопасти
+    for (let i = 0; i < 4; i++) {
+      const ang = this.bladeAngle + (i / 4) * Math.PI * 2;
+      ctx.save();
+      ctx.globalAlpha = 0.80;
+      ctx.translate(fanX, fanY);
+      ctx.rotate(ang);
+      ctx.fillStyle = '#4090c8';
+      ctx.beginPath();
+      ctx.ellipse(R * 0.52, 0, R * 0.52, R * 0.17, 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // втулка
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#90c8ff';
+    ctx.beginPath();
+    ctx.arc(fanX, fanY, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
   }
 }
 
