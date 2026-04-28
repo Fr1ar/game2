@@ -313,6 +313,7 @@ function draw() {
 
   if (level.currents) level.currents.forEach(c => c.draw(ctx, cam.x));
   level.platforms.forEach(p  => p.draw(ctx, cam.x, cam.y));
+  if (level.horizontalGravity) drawActiveWall();
   level.hazards.forEach(h    => h.draw(ctx, cam.x, cam.y));
   level.checkpoints.forEach(c => c.draw(ctx, cam.x, cam.y));
   level.shards.forEach(s     => s.draw(ctx, cam.x, cam.y));
@@ -389,6 +390,70 @@ function drawGravityIndicator() {
   ctx.font = '11px sans-serif';
   ctx.fillText('↓/S — flip', x, y + 26);
   ctx.restore();
+}
+
+// Визуальные полосы пола и потолка для горизонтальной гравитации (Сон 6)
+function drawActiveWall() {
+  const floorOnLeft = player.gravityDir < 0;
+  const t = Date.now() / 500;
+  const pulse = 0.7 + Math.sin(t) * 0.25;
+  ctx.save();
+  _drawWallSurface(true,  floorOnLeft, pulse);  // левая стена
+  _drawWallSurface(false, !floorOnLeft, pulse); // правая стена
+  ctx.restore();
+}
+
+// isLeft: левый экранный край; isFloor: активная (гравитирующая) стена
+function _drawWallSurface(isLeft, isFloor, pulse) {
+  const W_STRIP = isFloor ? 28 : 14;
+  const x = isLeft ? 0 : W - W_STRIP;
+  const [r, g, b] = isFloor
+    ? (isLeft ? [50, 200, 130] : [220, 130, 50])
+    : [40, 55, 80];
+
+  // мягкое свечение за полосой
+  if (isFloor) {
+    const glowW = 90;
+    const gx = isLeft ? 0 : W - glowW;
+    const grd = ctx.createLinearGradient(isLeft ? 0 : W, 0, isLeft ? glowW : W - glowW, 0);
+    grd.addColorStop(0, `rgba(${r},${g},${b},${(0.28 * pulse).toFixed(2)})`);
+    grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = grd;
+    ctx.fillRect(gx, 0, glowW, H);
+  }
+
+  // основная полоса
+  ctx.globalAlpha = isFloor ? 0.92 : 0.4;
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
+  ctx.fillRect(x, 0, W_STRIP, H);
+
+  // горизонтальные тайловые линии (скроллятся с камерой)
+  const TILE_H = 40;
+  const offset = cam.y % TILE_H;
+  ctx.globalAlpha = isFloor ? 0.25 : 0.15;
+  ctx.fillStyle = '#000';
+  for (let ty = -offset; ty < H + TILE_H; ty += TILE_H) {
+    ctx.fillRect(x, ty, W_STRIP, 2);
+  }
+
+  // яркая подсветка внутренней грани (поверхность, на которой стоит игрок)
+  ctx.globalAlpha = isFloor ? 0.6 * pulse : 0.15;
+  ctx.fillStyle = isFloor
+    ? `rgb(${Math.min(r+90,255)},${Math.min(g+90,255)},${Math.min(b+90,255)})`
+    : '#6080a0';
+  ctx.fillRect(isLeft ? x + W_STRIP - 3 : x, 0, 3, H);
+
+  // стрелки на неактивной стене (подсказка)
+  if (!isFloor) {
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#aac';
+    ctx.font = '10px sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = isLeft ? 'left' : 'right';
+    const lx = isLeft ? x + 4 : x + W_STRIP - 4;
+    for (let ty = 80; ty < H; ty += 100) ctx.fillText(isLeft ? '←' : '→', lx, ty);
+  }
 }
 
 function drawWallIndicator() {
