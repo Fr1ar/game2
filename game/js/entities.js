@@ -204,6 +204,12 @@ class Checkpoint {
 
   draw(ctx, camX, camY) {
     const sx = this.x - camX, sy = this.y - camY;
+    ctx.save();
+    if (this.drawAngle) {
+      ctx.translate(sx + this.w / 2, sy + this.h / 2);
+      ctx.rotate(this.drawAngle);
+      ctx.translate(-(sx + this.w / 2), -(sy + this.h / 2));
+    }
     // pole
     ctx.fillStyle = '#443366';
     ctx.fillRect(sx + 6, sy, 4, this.h);
@@ -218,6 +224,7 @@ class Checkpoint {
     ctx.lineTo(sx + 10, sy + 16);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
   }
 }
 
@@ -378,6 +385,225 @@ class Chaser {
     ctx.beginPath();
     ctx.ellipse(sx + 8, sy - 4 - eo, 4.5, 5.5, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  }
+}
+
+// Horizontal wind current zone
+class CurrentZone {
+  constructor(x1, x2, force) {
+    this.x1 = x1; this.x2 = x2;
+    this.force = force;
+    this.pulse = 0;
+  }
+
+  applyTo(player) {
+    if (player.x + player.w > this.x1 && player.x < this.x2) {
+      player.vx += this.force;
+      if (Math.abs(player.vx) > player.physics.moveSpeed)
+        player.vx = Math.sign(player.vx) * player.physics.moveSpeed;
+    }
+  }
+
+  update() { this.pulse += 0.04; }
+
+  draw(ctx, camX) {
+    const sx = this.x1 - camX, ex = this.x2 - camX;
+    const dir = this.force > 0;
+    ctx.save();
+    const g = ctx.createLinearGradient(sx, 0, ex, 0);
+    g.addColorStop(dir ? 0 : 1, 'rgba(80,200,255,0)');
+    g.addColorStop(dir ? 1 : 0, 'rgba(80,200,255,0.16)');
+    ctx.fillStyle = g;
+    ctx.fillRect(sx, 0, ex - sx, 720);
+    ctx.globalAlpha = 0.22 + Math.sin(this.pulse) * 0.07;
+    ctx.fillStyle = '#70d0ff';
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center';
+    const arr = dir ? '→' : '←';
+    for (let ax = sx + 60; ax < ex - 20; ax += 120)
+      for (let ay = 110; ay < 640; ay += 120)
+        ctx.fillText(arr, ax, ay);
+    ctx.restore();
+  }
+}
+
+// Mini teleport portal — jumps player to a secret platform
+class TeleportPortal {
+  constructor(x, y, destX, destY) {
+    this.x = x; this.y = y;
+    this.w = 48; this.h = 72;
+    this.destX = destX; this.destY = destY;
+    this.pulse = 0; this.rotation = 0; this.cooldown = 0;
+  }
+
+  get cx() { return this.x + this.w / 2; }
+  get cy() { return this.y + this.h / 2; }
+
+  update() {
+    this.pulse += 0.06;
+    this.rotation += 0.03;
+    if (this.cooldown > 0) this.cooldown--;
+  }
+
+  checkTeleport(player) {
+    if (this.cooldown > 0) return;
+    if (player.x < this.x + this.w && player.x + player.w > this.x &&
+        player.y < this.y + this.h && player.y + player.h > this.y) {
+      player.x = this.destX;
+      player.y = this.destY;
+      player.vx = 0; player.vy = 0;
+      this.cooldown = 90;
+      for (let i = 0; i < 22; i++) {
+        const a = Math.random() * Math.PI * 2, spd = 1 + Math.random() * 3;
+        player.trailParticles.push({
+          x: player.cx + Math.cos(a) * 10, y: player.cy + Math.sin(a) * 10,
+          vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+          life: 35 + Math.random() * 20, maxLife: 55, dj: true,
+        });
+      }
+    }
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.cx - camX, sy = this.cy - camY;
+    const alpha = this.cooldown > 0 ? 0.30 : 1;
+    const sc = 1 + Math.sin(this.pulse) * 0.10;
+    const r = 26;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(sx, sy); ctx.scale(sc, sc); ctx.rotate(this.rotation);
+
+    const og = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r);
+    og.addColorStop(0, 'rgba(255,185,40,0.9)');
+    og.addColorStop(1, 'rgba(200,100,0,0)');
+    ctx.fillStyle = og; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+
+    const ig = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.48);
+    ig.addColorStop(0, 'rgba(255,245,160,1)');
+    ig.addColorStop(1, 'rgba(255,160,0,0)');
+    ctx.fillStyle = ig; ctx.beginPath(); ctx.arc(0, 0, r * 0.48, 0, Math.PI * 2); ctx.fill();
+
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2 + this.rotation * 2;
+      ctx.strokeStyle = `rgba(255,215,80,${0.4 + Math.sin(this.pulse + i) * 0.2})`;
+      ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(ang) * r * 0.85, Math.sin(ang) * r * 0.85); ctx.stroke();
+    }
+    ctx.restore();
+
+    if (this.cooldown === 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.65 + Math.sin(this.pulse * 1.5) * 0.30;
+      ctx.fillStyle = '#ffe060'; ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText('ВОЙТИ', sx, sy + r + 4);
+      ctx.restore();
+    }
+  }
+}
+
+// ── SpringJumper ─────────────────────────────────────────────
+class SpringJumper {
+  constructor(x, y) {
+    this.startX = x; this.startY = y;
+    this.x = x; this.y = y;
+    this.w = 44; this.h = 28;
+    this.vx = 0; this.vy = 0;
+    this.onGround = false;
+    this.squish = 0;
+    this.squishTimer = 0;
+    this.LAUNCH = 26;
+  }
+
+  get cx() { return this.x + this.w / 2; }
+  get cy() { return this.y + this.h / 2; }
+
+  update(player, platforms, deathY) {
+    this.vy += 0.55;
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vx *= 0.85;
+
+    if (this.y > deathY) { this.x = this.startX; this.y = this.startY; this.vx = 0; this.vy = 0; }
+
+    this.onGround = false;
+    for (const p of platforms) {
+      if (!p.active) continue;
+      if (this.x + this.w > p.x && this.x < p.x + p.w &&
+          this.y + this.h > p.y && this.y + this.h < p.y + p.h + 20 && this.vy >= 0) {
+        this.y = p.y - this.h; this.vy = 0; this.onGround = true;
+      }
+    }
+
+    const pHit = player.x < this.x + this.w && player.x + player.w > this.x &&
+                 player.y + player.h > this.y + 4 && player.y < this.y + this.h;
+    if (pHit) {
+      const fromLeft = player.cx < this.cx;
+      this.vx += fromLeft ? 3.5 : -3.5;
+    }
+
+    const onTop = player.x + player.w > this.x + 4 && player.x < this.x + this.w - 4 &&
+                  player.y + player.h >= this.y && player.y + player.h <= this.y + 16 &&
+                  player.vy > 0;
+    if (onTop && this.squishTimer === 0) {
+      player.vy = -this.LAUNCH;
+      player.vx = 0;
+      player.onGround = false;
+      player.canDoubleJump = true;
+      this.squishTimer = 18;
+      SoundFX.springBoing();
+    }
+
+    if (this.squishTimer > 0) {
+      this.squishTimer--;
+      const t = 1 - this.squishTimer / 18;
+      this.squish = (t < 0.5 ? t * 2 : (1 - t) * 2) * 0.55;
+    } else {
+      this.squish = 0;
+    }
+  }
+
+  resetToCheckpoint(cpX, cpY) {
+    this.x = cpX + 60; this.y = cpY;
+    this.startX = this.x; this.startY = this.y;
+    this.vx = 0; this.vy = 0;
+  }
+
+  draw(ctx, camX, camY) {
+    const sx = this.x - camX, sy = this.y - camY;
+    const sh = this.h * (1 - this.squish * 0.55);
+    const sw = this.w * (1 + this.squish * 0.3);
+    const ox = (sw - this.w) / 2;
+    const oy = this.h - sh;
+
+    ctx.save();
+    ctx.fillStyle = '#cc2200';
+    ctx.fillRect(sx - ox, sy + oy + sh * 0.55, sw, sh * 0.45);
+    ctx.fillStyle = 'rgba(255,100,60,0.4)';
+    ctx.fillRect(sx - ox + 3, sy + oy + sh * 0.6, 6, sh * 0.25);
+    ctx.fillStyle = '#ffe030';
+    ctx.fillRect(sx - ox, sy + oy, sw, sh * 0.58);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(sx - ox, sy + oy, sw, sh * 0.58); ctx.clip();
+    ctx.strokeStyle = '#ff8800'; ctx.lineWidth = 3;
+    for (let i = -2; i < 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(sx - ox + i * 12, sy + oy);
+      ctx.lineTo(sx - ox + i * 12 + sh * 0.58, sy + oy + sh * 0.58);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.fillStyle = '#dd1100';
+    for (let i = 0; i < 3; i++) {
+      const cx2 = sx - ox + sw * 0.5, cy2 = sy + oy + 2 + i * 5;
+      ctx.beginPath();
+      ctx.moveTo(cx2 - 8, cy2 + 4); ctx.lineTo(cx2, cy2); ctx.lineTo(cx2 + 8, cy2 + 4);
+      ctx.lineWidth = 1.5; ctx.strokeStyle = '#ff4422'; ctx.stroke();
+    }
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(sx - ox + 2, sy + oy + sh + 1, sw, 3);
     ctx.restore();
   }
 }

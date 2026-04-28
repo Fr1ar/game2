@@ -35,6 +35,7 @@ class Player {
     this.deathTimer = 0;
     this.trailParticles = [];
     this.gravityDir = 1;
+    this.gravityAxis = 'y';
   }
 
   get cx() { return this.x + this.w / 2; }
@@ -42,6 +43,7 @@ class Player {
 
   update(platforms, hazards) {
     if (this.dead) { this.deathTimer++; return; }
+    if (this.gravityAxis === 'x') { this._updateHorizontal(platforms, hazards); return; }
 
     const ph = this.physics;
 
@@ -125,6 +127,91 @@ class Player {
     SoundFX.die();
   }
 
+  _updateHorizontal(platforms, hazards) {
+    const ph = this.physics;
+
+    // movement along wall (vertical axis)
+    if (Input.isDown('ArrowUp')   || Input.isDown('KeyW'))   { this.vy -= 1.5; this.facingRight = false; }
+    if (Input.isDown('ArrowDown') || Input.isDown('KeyS'))   { this.vy += 1.5; this.facingRight = true;  }
+    this.vy *= ph.friction;
+    if (Math.abs(this.vy) > ph.moveSpeed) this.vy = Math.sign(this.vy) * ph.moveSpeed;
+
+    // jump buffer (Space only — arrows are used for movement)
+    if (Input.wasPressed('Space')) this.jumpBuffer = JUMP_BUFFER;
+    if (this.jumpBuffer > 0) this.jumpBuffer--;
+
+    // coyote time
+    if (this.onGround) { this.coyoteTimer = COYOTE_TIME; this.canDoubleJump = true; }
+    else if (this.coyoteTimer > 0) this.coyoteTimer--;
+
+    // jump away from wall
+    if (this.jumpBuffer > 0) {
+      if (this.coyoteTimer > 0) {
+        this.vx = -ph.jumpForce * this.gravityDir;
+        this.coyoteTimer = 0; this.jumpBuffer = 0; SoundFX.jump();
+      } else if (this.canDoubleJump) {
+        this.vx = -ph.djForce * this.gravityDir;
+        this.canDoubleJump = false; this.jumpBuffer = 0;
+        this._spawnDJBurst(); SoundFX.doubleJump();
+      }
+    }
+
+    // variable jump height
+    if (!Input.isDown('Space') && this.vx * this.gravityDir < -4) this.vx += this.gravityDir * 0.9;
+
+    // gravity (horizontal axis)
+    this.vx += ph.gravity * this.gravityDir;
+    if (this.vx * this.gravityDir > 18) this.vx = 18 * this.gravityDir;
+
+    // move & collide
+    this.y += this.vy;
+    this._resolveY_slide(platforms);
+    const wasOnGround = this.onGround;
+    this.onGround = false;
+    this.x += this.vx;
+    this._resolveX_land(platforms);
+    if (!wasOnGround && this.onGround) SoundFX.land();
+
+    // hazards
+    for (const h of hazards) { if (this._overlaps(h)) { this.die(); return; } }
+
+    // trail
+    if (Math.abs(this.vx) > 1 || Math.abs(this.vy) > 2)
+      this.trailParticles.push({ x: this.cx, y: this.cy, life: 10, maxLife: 10 });
+    this.trailParticles = this.trailParticles.filter(p => p.life-- > 0);
+
+    this.animTimer++;
+    if (this.animTimer > 8) { this.animTimer = 0; this.animFrame = (this.animFrame + 1) % 4; }
+  }
+
+  _resolveX_land(platforms) {
+    for (const p of platforms) {
+      if (p.active === false) continue;
+      if (!this._overlaps(p)) continue;
+      const movingWithGravity = this.vx * this.gravityDir > 0;
+      if (movingWithGravity) {
+        if (this.gravityDir > 0) this.x = p.x - this.w;
+        else                     this.x = p.x + p.w;
+        this.vx = 0; this.onGround = true;
+        if (p.onPlayerLand) p.onPlayerLand();
+      } else {
+        if (this.gravityDir > 0) this.x = p.x + p.w;
+        else                     this.x = p.x - this.w;
+        this.vx = 0;
+      }
+    }
+  }
+
+  _resolveY_slide(platforms) {
+    for (const p of platforms) {
+      if (p.active === false) continue;
+      if (!this._overlaps(p)) continue;
+      if (this.vy > 0) this.y = p.y - this.h;
+      else             this.y = p.y + p.h;
+      this.vy = 0;
+    }
+  }
+
   _resolveX(platforms) {
     for (const p of platforms) {
       if (p.active === false) continue;
@@ -200,13 +287,18 @@ class Player {
     ctx.fill();
     ctx.restore();
 
-    // draw flipped when gravity inverted
-    const flip = this.gravityDir < 0;
+    // draw flipped/rotated based on gravity axis and direction
+    const flip = this.gravityAxis === 'y' && this.gravityDir < 0;
+    const rotAngle = this.gravityAxis === 'x' ? (this.gravityDir > 0 ? -Math.PI / 2 : Math.PI / 2) : 0;
     ctx.save();
     if (flip) {
-      ctx.translate(sx + this.w/2, sy + this.h/2);
+      ctx.translate(sx + this.w / 2, sy + this.h / 2);
       ctx.scale(1, -1);
-      ctx.translate(-(sx + this.w/2), -(sy + this.h/2));
+      ctx.translate(-(sx + this.w / 2), -(sy + this.h / 2));
+    } else if (rotAngle !== 0) {
+      ctx.translate(sx + this.w / 2, sy + this.h / 2);
+      ctx.rotate(rotAngle);
+      ctx.translate(-(sx + this.w / 2), -(sy + this.h / 2));
     }
 
     // body

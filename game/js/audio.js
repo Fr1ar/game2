@@ -110,6 +110,23 @@ const SoundFX = (() => {
     o.connect(lpf); lpf.connect(g); g.connect(sfxBus);
     o.start(t); o.stop(t + 0.85);
   }
+  function springBoing() {
+    const ac = getCtx(); if (!ac) return;
+    const t = ac.currentTime;
+    const o = ac.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(180, t);
+    o.frequency.exponentialRampToValueAtTime(880, t + 0.12);
+    o.frequency.exponentialRampToValueAtTime(440, t + 0.28);
+    const lpf = ac.createBiquadFilter(); lpf.type = 'lowpass';
+    lpf.frequency.setValueAtTime(1800, t);
+    lpf.frequency.exponentialRampToValueAtTime(600, t + 0.28);
+    const g = ac.createGain(); g.gain.value = 0;
+    g.gain.linearRampToValueAtTime(0.22, t + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+    o.connect(lpf); lpf.connect(g); g.connect(sfxBus);
+    o.start(t); o.stop(t + 0.35);
+  }
+
   function gravityFlip() {
     const ac = getCtx(); if (!ac) return;
     const t = ac.currentTime;
@@ -279,6 +296,29 @@ const SoundFX = (() => {
     }, 4400));
   }
 
+  // L6 — horizontal: slow ethereal with sideways swoosh pulses
+  function _bgmHorizontal() {
+    const ac = _bgmStart(); if (!ac) return;
+    _bgmDrone(ac,  87.31, 'sine',     0.14);  // F2
+    _bgmDrone(ac, 130.81, 'sine',     0.10);  // C3
+    _bgmDrone(ac, 174.61, 'sine',     0.07);  // F3
+    _bgmDrone(ac, 261.63, 'triangle', 0.04);  // C4
+    _bgmLFO(ac, 0.09, 0.07, bgmGain.gain);
+    const notes = [174.61, 196.00, 220.00, 261.63, 220.00, 196.00];
+    let ni = 0;
+    bgmTimers.push(setInterval(() => {
+      if (!bgmGain) return;
+      const t = ac.currentTime;
+      const o = ac.createOscillator(); o.type = 'triangle';
+      o.frequency.value = notes[ni++ % notes.length];
+      const g = ac.createGain(); g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.05, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+      o.connect(g); g.connect(bgmGain);
+      o.start(t); o.stop(t + 2.0);
+    }, 1200));
+  }
+
   function playBGM(levelIndex) {
     if (bgmCurrentLevel === levelIndex && bgmGain) return;
     stopBGM();
@@ -288,7 +328,8 @@ const SoundFX = (() => {
       case 1: _bgmWater();     break;
       case 2: _bgmGlitch();    break;
       case 3: _bgmNightmare(); break;
-      case 4: _bgmFalling();   break;
+      case 4: _bgmFalling();    break;
+      case 5: _bgmHorizontal(); break;
     }
   }
 
@@ -391,7 +432,7 @@ const SoundFX = (() => {
   return {
     // SFX
     jump, doubleJump, land, die, checkpoint, collectShard,
-    portalActive, portalEnter, gravityFlip,
+    portalActive, portalEnter, gravityFlip, springBoing,
     // BGM
     playBGM, stopBGM,
     // Cutscene
