@@ -298,6 +298,49 @@ class Portal {
 
   draw(ctx, camX, camY) {
     const sx = this.cx - camX, sy = this.cy - camY;
+    const pulse = this.pulse;
+
+    // ── яркое свечение активного финального портала ─────────────────────────
+    if (this.active) {
+      const gPulse = 0.7 + Math.sin(pulse * 1.4) * 0.3;
+      ctx.save();
+
+      // внешнее золотое гало (широкое, мягкое)
+      const gOuter = ctx.createRadialGradient(sx, sy, 18, sx, sy, 120);
+      gOuter.addColorStop(0, `rgba(255,220,80,${0.22 * gPulse})`);
+      gOuter.addColorStop(0.5, `rgba(255,160,40,${0.10 * gPulse})`);
+      gOuter.addColorStop(1, 'rgba(255,100,0,0)');
+      ctx.fillStyle = gOuter;
+      ctx.beginPath(); ctx.arc(sx, sy, 120, 0, Math.PI * 2); ctx.fill();
+
+      // среднее белое ядро
+      const gMid = ctx.createRadialGradient(sx, sy, 0, sx, sy, 55);
+      gMid.addColorStop(0, `rgba(255,255,220,${0.55 * gPulse})`);
+      gMid.addColorStop(0.5, `rgba(255,200,80,${0.28 * gPulse})`);
+      gMid.addColorStop(1, 'rgba(255,120,0,0)');
+      ctx.fillStyle = gMid;
+      ctx.beginPath(); ctx.arc(sx, sy, 55, 0, Math.PI * 2); ctx.fill();
+
+      // вращающееся кольцо
+      ctx.globalAlpha = 0.55 * gPulse;
+      ctx.strokeStyle = '#ffe060';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = '#ffcc00';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 44 + Math.sin(pulse * 0.9) * 4, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // второе кольцо чуть крупнее, в противофазе
+      ctx.globalAlpha = 0.30 * gPulse;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 56 + Math.sin(pulse * 0.9 + Math.PI) * 5, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.restore();
+    }
 
     // sprite-based animation — same pattern as TeleportPortal
     if (PortalSprite.isReady()) {
@@ -306,7 +349,8 @@ class Portal {
       const COLS  = PortalSprite.cols, TOTAL = PortalSprite.frames;
       const fw    = (img.width  / COLS) | 0;
       const fh    = (img.height / PortalSprite.rows) | 0;
-      const dh    = 110, dw = (fw / fh) * dh;
+      const dh    = this.active ? 126 : 110;   // активный портал крупнее
+      const dw    = (fw / fh) * dh;
       const alpha = this.active ? 1 : 0.55;
 
       const raw   = this.animTime % TOTAL;
@@ -331,6 +375,10 @@ class Portal {
 
       ctx.save();
       ctx.imageSmoothingEnabled = true;
+      if (this.active) {
+        ctx.shadowColor = '#ffe080';
+        ctx.shadowBlur  = 28;
+      }
       ctx.globalAlpha = alpha;
       ctx.drawImage(ofc, 0, 0, fw, fh, sx - dw / 2, sy - dh / 2, dw, dh);
       ctx.restore();
