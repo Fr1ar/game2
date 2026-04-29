@@ -22,7 +22,8 @@ let state, levelIndex, level, player, chaser,
     messageTimer, bgStars, bgTime,
     gravityFlipCooldown, cutsceneTimer,
     oceanWaveTimer, bgBubbles,
-    gravHint, djHint, prevCanDJ;
+    gravHint, djHint, prevCanDJ,
+    chaserAwaitMove;
 
 function initStars(levelWidth) {
   bgStars = [];
@@ -237,9 +238,10 @@ function loadLevel(idx) {
   controlsTimer = 320;
   messageTimer = 0;
   gravityFlipCooldown = 0;
-  gravHint  = !!level.gravityToggle;
-  djHint    = !!level.djHint;
-  prevCanDJ = false;
+  gravHint       = !!level.gravityToggle;
+  djHint         = !!level.djHint;
+  prevCanDJ      = false;
+  chaserAwaitMove = !!level.chaser;
   bgTime = 0;
   oceanWaveTimer = 0;
   if (level.isOcean) {
@@ -392,7 +394,7 @@ function update() {
         player.gravityAxis = 'x';
         player.gravityDir  = level.initialGravityDir !== undefined ? level.initialGravityDir : -1;
       }
-      if (level.chaser) chaser = new Chaser(level.chaser.x, level.chaser.y, level.chaser.startDelay || 0);
+      if (level.chaser) { chaser = new Chaser(level.chaser.x, level.chaser.y, level.chaser.startDelay || 0); chaserAwaitMove = true; }
       if (level.spring) level.spring.resetToCheckpoint(checkpointX, checkpointY);
       if (level.bats) level.bats.forEach(b => {
         b.x = b.perchX; b.y = b.perchY; b.vx = 0; b.vy = 0;
@@ -510,8 +512,16 @@ function update() {
   if (djHint && prevCanDJ && !player.canDoubleJump && !player.onGround) djHint = false;
   prevCanDJ = player.canDoubleJump;
 
-  // chaser update
+  // chaser update — waits for first player movement
   if (chaser) {
+    if (chaserAwaitMove) {
+      if (Input.isLeft() || Input.isRight() || Input.isJump()) {
+        chaserAwaitMove = false;
+        chaser.startDelay = 120;  // 2s countdown after first move
+      } else {
+        chaser.startDelay = 9999; // frozen until player moves
+      }
+    }
     chaser.update(player, level.platforms);
     if (!player.dead && chaser.overlapsPlayer(player)) player.die();
   }
@@ -745,8 +755,8 @@ function draw() {
     ctx.restore();
   }
 
-  // double-jump hint (level 1)
-  if (djHint) drawDJHint();
+  // double-jump hint — pushed down when gravity hint is also showing
+  if (djHint) drawDJHint(level.gravityToggle && gravHint ? H / 2 + 30 : H / 2 - 60);
 
   // gravity indicator for level 5
   if (level.gravityToggle) drawGravityIndicator();
@@ -772,52 +782,52 @@ function draw() {
   }
 }
 
-function drawDJHint() {
+function drawDJHint(cy = H / 2 - 60) {
   const t     = Date.now() / 600;
   const pulse = 0.72 + Math.sin(t) * 0.28;
-  const cx = W / 2, cy = H / 2 - 60;
+  const cx = W / 2;
 
   ctx.save();
 
   // фон таблетки
-  const TW = 340, TH = 44;
-  ctx.globalAlpha = 0.88 * pulse;
+  const TW = 500, TH = 60;
+  ctx.globalAlpha = 0.90 * pulse;
   ctx.fillStyle = '#080318';
   ctx.beginPath();
-  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 10);
+  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 12);
   ctx.fill();
 
   // рамка
-  ctx.globalAlpha = 0.80 * pulse;
+  ctx.globalAlpha = 0.85 * pulse;
   ctx.strokeStyle = '#4870e8';
-  ctx.lineWidth = 1.8;
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
-  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 10);
+  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 12);
   ctx.stroke();
 
   // иконка [Space] — широкая клавиша
-  const kx = cx - 126, ky = cy;
-  const KW = 46, KH = 20;
+  const kx = cx - 170, ky = cy;
+  const KW = 64, KH = 28;
   ctx.globalAlpha = 0.95 * pulse;
   const kg = ctx.createLinearGradient(kx, ky - KH / 2, kx, ky + KH / 2);
   kg.addColorStop(0, '#304898'); kg.addColorStop(1, '#1a2858');
   ctx.fillStyle = kg;
-  ctx.beginPath(); ctx.roundRect(kx - KW / 2, ky - KH / 2, KW, KH, 4); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(kx - KW / 2, ky - KH / 2, KW, KH, 5); ctx.fill();
   ctx.globalAlpha = 0.40 * pulse;
   ctx.fillStyle = '#8090d8';
-  ctx.fillRect(kx - KW / 2 + 4, ky - KH / 2 + 3, KW - 8, 3);
+  ctx.fillRect(kx - KW / 2 + 5, ky - KH / 2 + 4, KW - 10, 4);
   ctx.globalAlpha = 1;
   ctx.fillStyle = '#dde8ff';
-  ctx.font = 'bold 10px sans-serif';
+  ctx.font = 'bold 13px sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('SPACE', kx, ky + 1);
 
   // текст
   ctx.globalAlpha = 0.96 * pulse;
   ctx.fillStyle = '#c8d8ff';
-  ctx.font = '14px sans-serif';
+  ctx.font = '18px sans-serif';
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillText('×2 — двойной прыжок в воздухе', cx - 96, cy + 1);
+  ctx.fillText('×2 — двойной прыжок в воздухе', cx - 126, cy + 1);
 
   ctx.restore();
 }
@@ -830,43 +840,44 @@ function drawGravHint() {
   ctx.save();
 
   // фон таблетки
-  const TW = 320, TH = 44;
-  ctx.globalAlpha = 0.88 * pulse;
+  const TW = 470, TH = 60;
+  ctx.globalAlpha = 0.90 * pulse;
   ctx.fillStyle = '#0d0628';
   ctx.beginPath();
-  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 10);
+  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 12);
   ctx.fill();
 
   // цветная рамка
-  ctx.globalAlpha = 0.80 * pulse;
+  ctx.globalAlpha = 0.85 * pulse;
   ctx.strokeStyle = '#9060f0';
-  ctx.lineWidth = 1.8;
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
-  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 10);
+  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 12);
   ctx.stroke();
 
   // иконка [G]
-  const kx = cx - 118, ky = cy;
+  const kx = cx - 160, ky = cy;
+  const KW = 30, KH = 26;
   ctx.globalAlpha = 0.95 * pulse;
-  const kg = ctx.createLinearGradient(kx, ky - 10, kx, ky + 10);
+  const kg = ctx.createLinearGradient(kx, ky - KH / 2, kx, ky + KH / 2);
   kg.addColorStop(0, '#6050d0'); kg.addColorStop(1, '#361f88');
   ctx.fillStyle = kg;
-  ctx.beginPath(); ctx.roundRect(kx - 11, ky - 10, 22, 20, 4); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(kx - KW / 2, ky - KH / 2, KW, KH, 5); ctx.fill();
   ctx.globalAlpha = 0.40 * pulse;
   ctx.fillStyle = '#c0b0ff';
-  ctx.fillRect(kx - 8, ky - 8, 16, 3);
+  ctx.fillRect(kx - KW / 2 + 4, ky - KH / 2 + 4, KW - 8, 4);
   ctx.globalAlpha = 1;
   ctx.fillStyle = '#f0ecff';
-  ctx.font = 'bold 13px sans-serif';
+  ctx.font = 'bold 16px sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('G', kx, ky + 1);
 
   // текст
   ctx.globalAlpha = 0.96 * pulse;
   ctx.fillStyle = '#ddd0ff';
-  ctx.font = '14px sans-serif';
+  ctx.font = '18px sans-serif';
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillText('— нажми, чтобы сменить гравитацию', cx - 90, cy + 1);
+  ctx.fillText('— нажми, чтобы сменить гравитацию', cx - 130, cy + 1);
 
   ctx.restore();
 }
