@@ -307,15 +307,22 @@ class Hazard {
 
   draw(ctx, camX, camY) {
     const sx = this.x - camX, sy = this.y - camY;
-    // spikes
     const count = Math.floor(this.w / 16);
     ctx.fillStyle = '#cc2244';
     for (let i = 0; i < count; i++) {
       const bx = sx + i * 16;
       ctx.beginPath();
-      ctx.moveTo(bx, sy + this.h);
-      ctx.lineTo(bx + 8, sy);
-      ctx.lineTo(bx + 16, sy + this.h);
+      if (this.flip) {
+        // потолочный шип — основание сверху, острие вниз
+        ctx.moveTo(bx,      sy);
+        ctx.lineTo(bx + 8,  sy + this.h);
+        ctx.lineTo(bx + 16, sy);
+      } else {
+        // напольный шип — основание снизу, острие вверх
+        ctx.moveTo(bx,      sy + this.h);
+        ctx.lineTo(bx + 8,  sy);
+        ctx.lineTo(bx + 16, sy + this.h);
+      }
       ctx.closePath();
       ctx.fill();
     }
