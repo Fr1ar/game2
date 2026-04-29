@@ -314,14 +314,23 @@ class Player {
         oc.width  = src.naturalWidth; oc.height = src.naturalHeight;
         const octx = oc.getContext('2d');
         octx.drawImage(src, 0, 0);
-        const id = octx.getImageData(0, 0, oc.width, oc.height);
-        const d  = id.data;
-        for (let i = 0; i < d.length; i += 4) {
-          if (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114 < 40 && Math.max(d[i], d[i+1], d[i+2]) < 60)
-            d[i+3] = 0;
+        let id;
+        try {
+          id = octx.getImageData(0, 0, oc.width, oc.height);
+        } catch (e) {
+          // canvas tainted (e.g. running via file:// origin) — fall back to raw image
+          this._deathCanvas = src;
+          id = null;
         }
-        octx.putImageData(id, 0, 0);
-        this._deathCanvas = oc;
+        if (id) {
+          const d = id.data;
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114 < 40 && Math.max(d[i], d[i+1], d[i+2]) < 60)
+              d[i+3] = 0;
+          }
+          octx.putImageData(id, 0, 0);
+          this._deathCanvas = oc;
+        }
       }
       const dc   = this._deathCanvas;
       const COLS = DeathSprite.cols;

@@ -24,6 +24,7 @@ const Input = (() => {
     isRight() { return keys['ArrowRight'] || keys['KeyD']; },
     isJump()  { return keys['ArrowUp']    || keys['KeyW'] || keys['Space']; },
     wasJumped() { return justPressed['ArrowUp'] || justPressed['KeyW'] || justPressed['Space']; },
+    anyKey() { return Object.keys(justPressed).length > 0; },
     flush() {
       for (const k in justPressed)  delete justPressed[k];
       for (const k in justReleased) delete justReleased[k];

@@ -32,6 +32,7 @@ const ASSETS = [
   TeleportPortalSprite.img,
   BatSprite.img,
   SpringSprite.img,
+  DeathSprite.img,
   window._ghostImg,
   window._ghostEndImg,
 ];
@@ -446,6 +447,11 @@ function update() {
   }
 
   // --- PLAYING ---
+
+  // dismiss all hints on first key press
+  if ((controlsTimer > 0 || gravHint || djHint) && Input.anyKey()) {
+    controlsTimer = 0; gravHint = false; djHint = false;
+  }
 
   // horizontal gravity wall-flip (level 6)
   if (level.horizontalGravity) {
