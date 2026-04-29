@@ -32,6 +32,7 @@ const ASSETS = [
   TeleportPortalSprite.img,
   BatSprite.img,
   SpringSprite.img,
+  DeathSprite.img,
   window._ghostImg,
   window._ghostEndImg,
 ];
