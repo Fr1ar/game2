@@ -300,43 +300,55 @@ class Portal {
     const sx = this.cx - camX, sy = this.cy - camY;
     const pulse = this.pulse;
 
-    // ── яркое свечение активного финального портала ─────────────────────────
+    // ── переливающееся свечение активного финального портала ────────────────
     if (this.active) {
+      const t      = Date.now() / 1000;
       const gPulse = 0.7 + Math.sin(pulse * 1.4) * 0.3;
+      // основной оттенок медленно вращается по всему спектру
+      const hue0   = (t * 60) % 360;
+      // три смещённых оттенка для градиентов
+      const hA = hue0;
+      const hB = (hue0 + 90)  % 360;
+      const hC = (hue0 + 180) % 360;
+      // два кольца берут ещё два смещённых цвета
+      const hR1 = (hue0 + 50)  % 360;
+      const hR2 = (hue0 + 200) % 360;
+
       ctx.save();
 
-      // внешнее золотое гало (широкое, мягкое)
+      // внешнее широкое гало
       const gOuter = ctx.createRadialGradient(sx, sy, 18, sx, sy, 120);
-      gOuter.addColorStop(0, `rgba(255,220,80,${0.22 * gPulse})`);
-      gOuter.addColorStop(0.5, `rgba(255,160,40,${0.10 * gPulse})`);
-      gOuter.addColorStop(1, 'rgba(255,100,0,0)');
+      gOuter.addColorStop(0,   `hsla(${hA},100%,70%,${0.28 * gPulse})`);
+      gOuter.addColorStop(0.5, `hsla(${hB},100%,55%,${0.12 * gPulse})`);
+      gOuter.addColorStop(1,   `hsla(${hC},100%,40%,0)`);
       ctx.fillStyle = gOuter;
       ctx.beginPath(); ctx.arc(sx, sy, 120, 0, Math.PI * 2); ctx.fill();
 
-      // среднее белое ядро
+      // среднее яркое ядро
       const gMid = ctx.createRadialGradient(sx, sy, 0, sx, sy, 55);
-      gMid.addColorStop(0, `rgba(255,255,220,${0.55 * gPulse})`);
-      gMid.addColorStop(0.5, `rgba(255,200,80,${0.28 * gPulse})`);
-      gMid.addColorStop(1, 'rgba(255,120,0,0)');
+      gMid.addColorStop(0,   `hsla(${hC},80%,95%,${0.60 * gPulse})`);
+      gMid.addColorStop(0.5, `hsla(${hA},100%,70%,${0.30 * gPulse})`);
+      gMid.addColorStop(1,   `hsla(${hB},100%,50%,0)`);
       ctx.fillStyle = gMid;
       ctx.beginPath(); ctx.arc(sx, sy, 55, 0, Math.PI * 2); ctx.fill();
 
-      // вращающееся кольцо
-      ctx.globalAlpha = 0.55 * gPulse;
-      ctx.strokeStyle = '#ffe060';
-      ctx.lineWidth = 2.5;
-      ctx.shadowColor = '#ffcc00';
-      ctx.shadowBlur = 14;
+      // первое кольцо
+      ctx.globalAlpha = 0.70 * gPulse;
+      ctx.strokeStyle = `hsl(${hR1},100%,70%)`;
+      ctx.lineWidth   = 2.5;
+      ctx.shadowColor = `hsl(${hR1},100%,60%)`;
+      ctx.shadowBlur  = 16;
       ctx.beginPath();
       ctx.arc(sx, sy, 44 + Math.sin(pulse * 0.9) * 4, 0, Math.PI * 2);
       ctx.stroke();
 
-      // второе кольцо чуть крупнее, в противофазе
-      ctx.globalAlpha = 0.30 * gPulse;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.5;
+      // второе кольцо, в противофазе, другой цвет
+      ctx.globalAlpha = 0.45 * gPulse;
+      ctx.strokeStyle = `hsl(${hR2},100%,80%)`;
+      ctx.shadowColor = `hsl(${hR2},100%,60%)`;
+      ctx.lineWidth   = 1.5;
       ctx.beginPath();
-      ctx.arc(sx, sy, 56 + Math.sin(pulse * 0.9 + Math.PI) * 5, 0, Math.PI * 2);
+      ctx.arc(sx, sy, 58 + Math.sin(pulse * 0.9 + Math.PI) * 5, 0, Math.PI * 2);
       ctx.stroke();
 
       ctx.restore();
@@ -376,8 +388,9 @@ class Portal {
       ctx.save();
       ctx.imageSmoothingEnabled = true;
       if (this.active) {
-        ctx.shadowColor = '#ffe080';
-        ctx.shadowBlur  = 28;
+        const hShadow = (Date.now() / 1000 * 60) % 360;
+        ctx.shadowColor = `hsl(${hShadow},100%,70%)`;
+        ctx.shadowBlur  = 30;
       }
       ctx.globalAlpha = alpha;
       ctx.drawImage(ofc, 0, 0, fw, fh, sx - dw / 2, sy - dh / 2, dw, dh);
