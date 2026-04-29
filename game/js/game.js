@@ -427,12 +427,6 @@ function update() {
 
   // gravity toggle (level 5) — ↑/W тянет к потолку, ↓/S тянет к полу
   if (level.gravityToggle) {
-    if (gravHint) {
-      const anyKey = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',
-                      'Space','KeyW','KeyA','KeyS','KeyD','KeyG']
-        .some(k => Input.wasPressed(k));
-      if (anyKey) gravHint = false;
-    }
     gravityFlipCooldown--;
     if (gravityFlipCooldown <= 0) {
       const toUp   = !level.horizontalGravity && (Input.wasPressed('ArrowUp')   || Input.wasPressed('KeyW'));
@@ -440,13 +434,13 @@ function update() {
       const toggle = Input.wasPressed('KeyG');
       if (toUp && player.gravityDir !== -1) {
         player.gravityDir = -1; player.vy = 0; player.canDoubleJump = true;
-        gravityFlipCooldown = 18; SoundFX.gravityFlip();
+        gravityFlipCooldown = 18; SoundFX.gravityFlip(); gravHint = false;
       } else if (toDown && player.gravityDir !== 1) {
         player.gravityDir =  1; player.vy = 0; player.canDoubleJump = true;
-        gravityFlipCooldown = 18; SoundFX.gravityFlip();
+        gravityFlipCooldown = 18; SoundFX.gravityFlip(); gravHint = false;
       } else if (toggle) {
         player.gravityDir *= -1; player.vy = 0; player.canDoubleJump = true;
-        gravityFlipCooldown = 18; SoundFX.gravityFlip();
+        gravityFlipCooldown = 18; SoundFX.gravityFlip(); gravHint = false;
       }
     }
   }
@@ -772,46 +766,46 @@ function draw() {
 
 function drawGravHint() {
   const t  = Date.now() / 600;
-  const pulse = 0.55 + Math.sin(t) * 0.45;
+  const pulse = 0.72 + Math.sin(t) * 0.28;
   const cx = W / 2, cy = H / 2 - 60;
 
   ctx.save();
 
-  // полупрозрачная таблетка-фон
+  // фон таблетки
   const TW = 320, TH = 44;
-  ctx.globalAlpha = 0.72 * pulse;
-  ctx.fillStyle = '#0a0520';
+  ctx.globalAlpha = 0.88 * pulse;
+  ctx.fillStyle = '#0d0628';
   ctx.beginPath();
   ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 10);
   ctx.fill();
 
   // цветная рамка
-  ctx.globalAlpha = 0.55 * pulse;
-  ctx.strokeStyle = '#7040d8';
-  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 0.80 * pulse;
+  ctx.strokeStyle = '#9060f0';
+  ctx.lineWidth = 1.8;
   ctx.beginPath();
   ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 10);
   ctx.stroke();
 
   // иконка [G]
   const kx = cx - 118, ky = cy;
-  ctx.globalAlpha = 0.80 * pulse;
+  ctx.globalAlpha = 0.95 * pulse;
   const kg = ctx.createLinearGradient(kx, ky - 10, kx, ky + 10);
-  kg.addColorStop(0, '#5040b8'); kg.addColorStop(1, '#2a1870');
+  kg.addColorStop(0, '#6050d0'); kg.addColorStop(1, '#361f88');
   ctx.fillStyle = kg;
   ctx.beginPath(); ctx.roundRect(kx - 11, ky - 10, 22, 20, 4); ctx.fill();
-  ctx.globalAlpha = 0.25 * pulse;
-  ctx.fillStyle = '#b0a0ff';
+  ctx.globalAlpha = 0.40 * pulse;
+  ctx.fillStyle = '#c0b0ff';
   ctx.fillRect(kx - 8, ky - 8, 16, 3);
-  ctx.globalAlpha = 1 * pulse;
-  ctx.fillStyle = '#e0d8ff';
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#f0ecff';
   ctx.font = 'bold 13px sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('G', kx, ky + 1);
 
   // текст
-  ctx.globalAlpha = 0.90 * pulse;
-  ctx.fillStyle = '#c8b8f0';
+  ctx.globalAlpha = 0.96 * pulse;
+  ctx.fillStyle = '#ddd0ff';
   ctx.font = '14px sans-serif';
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   ctx.fillText('— нажми, чтобы сменить гравитацию', cx - 90, cy + 1);
