@@ -449,9 +449,10 @@ function update() {
 
   // --- PLAYING ---
 
-  // dismiss all hints on first key press
-  if ((controlsTimer > 0 || gravHint || djHint) && Input.anyKey()) {
-    controlsTimer = 0; gravHint = false; djHint = false;
+  // dismiss controls overlay and DJ hint on first key press
+  // gravHint dismisses only on actual gravity flip (see gravity toggle block)
+  if ((controlsTimer > 0 || djHint) && Input.anyKey()) {
+    controlsTimer = 0; djHint = false;
   }
 
   // horizontal gravity wall-flip (level 6)
