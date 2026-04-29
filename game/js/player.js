@@ -231,9 +231,10 @@ class Player {
         // landing on surface
         if (this.gravityDir > 0) this.y = p.y - this.h;
         else                     this.y = p.y + p.h;
+        const landVy = this.vy;
         this.vy = 0;
         this.onGround = true;
-        if (p.onPlayerLand) p.onPlayerLand();
+        if (p.onPlayerLand) p.onPlayerLand(this, landVy);
       } else {
         // head hit
         if (this.gravityDir > 0) this.y = p.y + p.h;

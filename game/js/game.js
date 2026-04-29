@@ -20,7 +20,8 @@ let state, levelIndex, level, player, chaser,
     checkpointX, checkpointY,
     shardsCollected, controlsTimer,
     messageTimer, bgStars, bgTime,
-    gravityFlipCooldown, cutsceneTimer;
+    gravityFlipCooldown, cutsceneTimer,
+    oceanWaveTimer, bgBubbles;
 
 function initStars(levelWidth) {
   bgStars = [];
@@ -33,6 +34,140 @@ function initStars(levelWidth) {
       speed: 0.2 + Math.random() * 0.6,
     });
   }
+}
+
+function initOceanBubbles(levelWidth) {
+  bgBubbles = [];
+  for (let i = 0; i < 80; i++) {
+    bgBubbles.push({
+      x: Math.random() * levelWidth,
+      y: H + Math.random() * H,
+      r: 1 + Math.random() * 3,
+      speed: 0.3 + Math.random() * 0.8,
+      wobble: Math.random() * Math.PI * 2,
+      wobbleSpeed: 0.02 + Math.random() * 0.03,
+      alpha: 0.1 + Math.random() * 0.25,
+    });
+  }
+  // фоновые рыбки — декоративные, по всей карте
+  bgBubbles._fish = [];
+  for (let i = 0; i < 60; i++) {
+    bgBubbles._fish.push({
+      x:      Math.random() * levelWidth,
+      y:      60 + Math.random() * 580,
+      speed:  0.18 + Math.random() * 0.5,
+      dir:    Math.random() > 0.5 ? 1 : -1,
+      wobble: Math.random() * Math.PI * 2,
+      size:   2 + Math.random() * 3,
+      alpha:  0.12 + Math.random() * 0.22,
+      hue:    160 + Math.floor(Math.random() * 60),  // teal-to-cyan
+    });
+  }
+}
+
+function drawOceanBackground() {
+  // base ocean gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0,   '#010f22');
+  grad.addColorStop(0.45, '#021428');
+  grad.addColorStop(0.75, '#021020');
+  grad.addColorStop(1,   '#010a16');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // caustic light rays from above
+  ctx.save();
+  for (let i = 0; i < 6; i++) {
+    const rx = ((i * 350 - cam.x * 0.08 + bgTime * 25) % (W + 600) + W + 600) % (W + 600) - 300;
+    const rg = ctx.createLinearGradient(rx - 40, 0, rx + 40, H * 0.7);
+    rg.addColorStop(0,   `rgba(20,140,255,${0.04 + Math.sin(bgTime * 1.5 + i) * 0.02})`);
+    rg.addColorStop(0.6, `rgba(10,80,200,0.02)`);
+    rg.addColorStop(1,   'rgba(0,40,140,0)');
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.moveTo(rx - 40, 0);
+    ctx.lineTo(rx + 40, 0);
+    ctx.lineTo(rx + 90, H * 0.7);
+    ctx.lineTo(rx - 90, H * 0.7);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // depth darkening overlay for bottom section (world y > depthZone.startY)
+  if (level.depthZone) {
+    const depthScreenY = level.depthZone.startY - cam.y;
+    if (depthScreenY < H) {
+      const depthH = H - Math.max(0, depthScreenY);
+      const dg = ctx.createLinearGradient(0, Math.max(0, depthScreenY), 0, H);
+      dg.addColorStop(0, 'rgba(0,5,15,0)');
+      dg.addColorStop(1, 'rgba(0,5,15,0.55)');
+      ctx.fillStyle = dg;
+      ctx.fillRect(0, Math.max(0, depthScreenY), W, depthH);
+    }
+  }
+
+  // animated bubbles rising
+  if (bgBubbles) {
+    bgBubbles.forEach(b => {
+      b.y -= b.speed;
+      b.wobble += b.wobbleSpeed;
+      if (b.y < -10) { b.y = H + Math.random() * 60; b.x = Math.random() * level.width; }
+      const sx = ((b.x - cam.x * 0.3) % W + W) % W;
+      ctx.save();
+      ctx.globalAlpha = b.alpha;
+      ctx.strokeStyle = '#4ab0ff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(sx + Math.sin(b.wobble) * 4, b.y, b.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // декоративные рыбки по всей карте
+    if (bgBubbles._fish) {
+      bgBubbles._fish.forEach(f => {
+        f.wobble += 0.05;
+        f.x += f.dir * f.speed;
+        // плавное изменение направления
+        if (Math.random() < 0.003) f.dir *= -1;
+        if (f.x < 0) { f.x = level.width; }
+        if (f.x > level.width) { f.x = 0; }
+        const fx = ((f.x - cam.x * 0.45) % W + W) % W;
+        const fy = f.y + Math.sin(f.wobble) * 5;
+        ctx.save();
+        ctx.globalAlpha = f.alpha;
+        ctx.translate(fx, fy);
+        ctx.scale(f.dir, 1);
+        // тельце
+        ctx.fillStyle = `hsla(${f.hue},70%,65%,1)`;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, f.size, f.size * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // хвост
+        ctx.beginPath();
+        ctx.moveTo(-f.size, 0);
+        ctx.lineTo(-f.size - f.size, -f.size * 0.55);
+        ctx.lineTo(-f.size - f.size,  f.size * 0.55);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+  }
+
+  // subtle bioluminescent particles in foreground
+  ctx.save();
+  for (let i = 0; i < 4; i++) {
+    const px = ((i * 520 - cam.x * 0.15 + bgTime * 10 + i * 80) % (W + 300) + W + 300) % (W + 300) - 150;
+    const py = 200 + i * 130 + Math.sin(bgTime * 2 + i * 1.4) * 30;
+    const pg = ctx.createRadialGradient(px, py, 0, px, py, 60);
+    pg.addColorStop(0, `rgba(20,180,255,${0.04 + Math.sin(bgTime * 3 + i) * 0.02})`);
+    pg.addColorStop(1, 'rgba(0,100,200,0)');
+    ctx.fillStyle = pg;
+    ctx.beginPath(); ctx.arc(px, py, 60, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 function loadLevel(idx) {
@@ -82,7 +217,16 @@ function loadLevel(idx) {
   messageTimer = 0;
   gravityFlipCooldown = 0;
   bgTime = 0;
-  initStars(level.width);
+  oceanWaveTimer = 0;
+  if (level.isOcean) {
+    initOceanBubbles(level.width);
+    bgStars = [];
+  } else {
+    bgBubbles = [];
+    initStars(level.width);
+  }
+  // reset floating platforms
+  level.platforms.forEach(p => { if (p instanceof FloatingPlatform) p.phase = Math.random() * Math.PI * 2; });
   SoundFX.playBGM(idx);
 }
 
@@ -105,6 +249,8 @@ function updateCamera() {
 
 // --- Background ---
 function drawBackground() {
+  if (level.isOcean) { drawOceanBackground(); return; }
+
   const [c1, c2, c3] = level.bgColors;
   const grad = ctx.createLinearGradient(0, 0, 0, H);
   grad.addColorStop(0, c1);
@@ -112,6 +258,8 @@ function drawBackground() {
   grad.addColorStop(1, c3);
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
+
+  if (level.forestBg) { level.forestBg.update(); level.forestBg.draw(ctx, cam.x, W, H); }
 
   for (let i = 0; i < 3; i++) {
     const bx = ((i * 1200 - cam.x * 0.18 + bgTime * 8) % (W + 500) + W + 500) % (W + 500) - 250;
@@ -218,6 +366,16 @@ function update() {
         b.x = b.perchX; b.y = b.perchY; b.vx = 0; b.vy = 0;
         b.state = 'perched'; b.facing = 1;
       });
+      level.platforms.forEach(p => {
+        if (p instanceof BranchSpring)  { p.state='idle'; p.bendAmt=0; p.y=p.baseY; p.slippery=false; p.slipDir=0; p.dripTimer=0; }
+        if (p instanceof BranchStatic)  { p.slippery=false; p.slipDir=0; p._dripTimer=0; }
+        if (p instanceof BranchBreak)   { p.state='solid'; p.crackTimer=0; p.fallVy=0; p.y=p.baseY; p.angle=0; p.active=true; p.slippery=false; }
+        if (p instanceof BranchHybrid)  { p.state='idle'; p.timer=0; p.bendAmt=0; p.y=p.baseY; p.fallVy=0; p.angle=0; p.active=true; p.bounced=false; p.slippery=false; }
+      });
+      if (level.monkeySpawner) level.monkeySpawner.reset();
+      if (level.parrot) level.parrot.reset();
+      player.controlLoss = 0;
+      player.umbrellaTimer = 0;
       state = State.PLAYING;
     }
     Input.flush();
@@ -250,9 +408,13 @@ function update() {
     }
   }
 
-  // update FadePlatforms
+  // update FadePlatforms and FloatingPlatforms
   level.platforms.forEach(p => {
     if (p instanceof FadePlatform) p.update();
+    if (p instanceof FloatingPlatform) p.update();
+    if (p instanceof BranchSpring)  p.update(player);
+    if (p instanceof BranchBreak)   p.update(level.deathY);
+    if (p instanceof BranchHybrid)  p.update(player, level.deathY);
   });
 
   // update entities
@@ -265,6 +427,38 @@ function update() {
 
   // fan zones (level 6)
   if (level.fans) level.fans.forEach(f => { f.update(); f.applyTo(player); });
+
+  // ocean entities (level 2)
+  if (level.isOcean) {
+    // global wave
+    if (level.oceanWave) {
+      oceanWaveTimer++;
+      const waveForce = Math.sin(oceanWaveTimer / level.oceanWave.period * Math.PI * 2) * level.oceanWave.strength;
+      player.vx += waveForce;
+    }
+    // depth zone — reduced control (extra friction on vx)
+    if (level.depthZone && player.y > level.depthZone.startY) {
+      player.vx *= level.depthZone.friction;
+    }
+    // jellies
+    if (level.jellies) level.jellies.forEach(j => {
+      j.update();
+      if (!player.dead && j.checkHit(player)) player.die();
+    });
+    // fish schools
+    if (level.fishSchools) level.fishSchools.forEach(f => { f.update(); f.applyTo(player); });
+    // tentacles
+    if (level.tentacles) level.tentacles.forEach(t => {
+      t.update(player);
+      if (!player.dead && t.checkHit(player)) player.die();
+    });
+    // whirlpools
+    if (level.whirlpools) level.whirlpools.forEach(w => { w.update(); w.applyTo(player); });
+    // vertical currents
+    if (level.verticalCurrents) level.verticalCurrents.forEach(vc => { vc.update(); vc.applyTo(player); });
+    // bubbles
+    if (level.bubbles) level.bubbles.forEach(b => { b.update(); b.tryUse(player); });
+  }
 
   // teleport portals
   if (level.teleportPortals) level.teleportPortals.forEach(tp => { tp.update(); tp.checkTeleport(player); });
@@ -285,6 +479,39 @@ function update() {
     level.bats.forEach(b => {
       b.update(player, level.platforms);
       if (!player.dead && b.overlapsPlayer(player)) player.die();
+    });
+  }
+
+  // umbrella boost update
+  if ((player.umbrellaTimer || 0) > 0) player.umbrellaTimer--;
+  if (level.umbrellas) {
+    level.umbrellas.forEach(u => {
+      u.update();
+      if (u.checkCollect(player)) player.umbrellaTimer = 180;
+    });
+  }
+
+  // parrot — spawn trigger + update
+  if (level.parrot) {
+    level.parrot.trySpawn(player, cam.x, cam.y);
+    if (level.parrot.active) level.parrot.update(player, level.platforms, cam.y);
+  }
+
+  // monkey spawner — paused during umbrella boost OR active parrot
+  if (level.monkeySpawner && !(player.umbrellaTimer > 0) && !level.parrot?.active) {
+    level.monkeySpawner.update(player, level.platforms);
+  }
+
+  // controlLoss decay
+  if ((player.controlLoss || 0) > 0) { player.controlLoss--; player.vx *= 0.88; }
+
+  // slippery branch sliding — player drifts in slipDir
+  if (player.onGround) {
+    level.platforms.forEach(p => {
+      if (p.slippery && player.x + player.w > p.x && player.x < p.x + p.w &&
+          Math.abs(p.y - (player.y + player.h)) < 6) {
+        player.vx += (p.slipDir || 1) * 0.27;
+      }
     });
   }
 
@@ -355,9 +582,25 @@ function draw() {
   drawBackground();
 
   if (level.currents) level.currents.forEach(c => c.draw(ctx, cam.x));
-  level.platforms.forEach(p  => p.draw(ctx, cam.x, cam.y));
+
+  // ocean entities — draw behind platforms
+  if (level.isOcean) {
+    if (level.whirlpools)       level.whirlpools.forEach(w  => w.draw(ctx, cam.x, cam.y));
+    if (level.verticalCurrents) level.verticalCurrents.forEach(vc => vc.draw(ctx, cam.x, cam.y));
+    if (level.fishSchools)      level.fishSchools.forEach(f  => f.draw(ctx, cam.x, cam.y));
+  }
+
+  level.platforms.forEach(p => p.draw(ctx, cam.x, cam.y));
   if (level.horizontalGravity) drawActiveWall();
   if (level.fans) level.fans.forEach(f => f.draw(ctx, cam.x, cam.y));
+
+  // ocean entities — draw in front of platforms
+  if (level.isOcean) {
+    if (level.jellies)   level.jellies.forEach(j  => j.draw(ctx, cam.x, cam.y));
+    if (level.tentacles) level.tentacles.forEach(t => t.draw(ctx, cam.x, cam.y));
+    if (level.bubbles)   level.bubbles.forEach(b  => b.draw(ctx, cam.x, cam.y));
+  }
+
   level.hazards.forEach(h    => h.draw(ctx, cam.x, cam.y));
   level.checkpoints.forEach(c => c.draw(ctx, cam.x, cam.y));
   level.shards.forEach(s     => s.draw(ctx, cam.x, cam.y));
@@ -365,8 +608,46 @@ function draw() {
   if (level.teleportPortals) level.teleportPortals.forEach(tp => tp.draw(ctx, cam.x, cam.y));
   if (level.spring) level.spring.draw(ctx, cam.x, cam.y);
   if (level.bats) level.bats.forEach(b => b.draw(ctx, cam.x, cam.y));
+  if (level.umbrellas) level.umbrellas.forEach(u => u.draw(ctx, cam.x, cam.y));
+  if (level.monkeySpawner) level.monkeySpawner.draw(ctx, cam.x, cam.y);
+  if (level.parrot) level.parrot.draw(ctx, cam.x, cam.y);
   if (chaser) chaser.draw(ctx, cam.x, cam.y);
   player.draw(ctx, cam.x, cam.y);
+
+  // umbrella boost HUD — floats above player
+  if ((player.umbrellaTimer || 0) > 0) {
+    const px  = Math.round(player.x + player.w * 0.5 - cam.x);
+    const py  = Math.round(player.y - cam.y);
+    const prog = player.umbrellaTimer / 180;
+    ctx.save();
+    // icon
+    const ux = px, uy = py - 44;
+    ctx.shadowColor = '#88ccff'; ctx.shadowBlur = 10;
+    ctx.fillStyle = '#3388dd';
+    ctx.beginPath(); ctx.moveTo(ux - 11, uy); ctx.arc(ux, uy, 11, Math.PI, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2266bb';
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI + (i + 0.5) * (Math.PI / 4);
+      ctx.beginPath(); ctx.arc(ux + Math.cos(a) * 9, uy + Math.sin(a) * 2, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#a06820'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(ux, uy); ctx.lineTo(ux, uy + 12); ctx.stroke();
+    ctx.beginPath(); ctx.arc(ux - 3, uy + 12, 2.5, 0, Math.PI); ctx.stroke();
+    ctx.lineCap = 'butt';
+    // progress bar
+    const bw = 38, bh = 4;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(px - bw * 0.5, py - 24, bw, bh);
+    const bg = ctx.createLinearGradient(px - bw * 0.5, 0, px + bw * 0.5, 0);
+    bg.addColorStop(0, '#44aaff'); bg.addColorStop(1, '#88ddff');
+    ctx.fillStyle = bg;
+    ctx.fillRect(px - bw * 0.5, py - 24, bw * prog, bh);
+    ctx.restore();
+  }
+
+  // tentacle screen warning — поверх всего, перед UI
+  if (level.tentacles) level.tentacles.forEach(t => t.drawWarning(ctx, W, H, cam.x, cam.y));
 
   UI.draw(ctx, W, H, shardsCollected, level.shards.length,
           level.portal.active, player, level.portal, cam.x, cam.y);
