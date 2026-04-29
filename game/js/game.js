@@ -190,6 +190,7 @@ function loadLevel(idx) {
     window._ghostEndImg.src = 'sprites/sprite-max-end.png';
   }
   player.endSprite       = window._ghostEndImg;
+
   player.endAnimActive   = false;
   player.endAnimDone     = false;
   player.endAnimFrame    = 0;

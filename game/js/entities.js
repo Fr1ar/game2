@@ -265,7 +265,6 @@ class Portal {
     ctx.scale(scale, scale);
     ctx.rotate(this.rotation);
 
-    // outer ring
     const r = 30;
     const outerGrad = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r);
     outerGrad.addColorStop(0, this.active ? 'rgba(180,80,255,0.9)' : 'rgba(80,60,120,0.5)');
@@ -275,7 +274,6 @@ class Portal {
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
 
-    // inner glow
     const innerGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.5);
     innerGrad.addColorStop(0, this.active ? 'rgba(240,180,255,1)' : 'rgba(140,100,200,0.4)');
     innerGrad.addColorStop(1, 'rgba(160,60,255,0)');
@@ -285,7 +283,6 @@ class Portal {
     ctx.fill();
 
     if (this.active) {
-      // swirl lines
       for (let i = 0; i < 8; i++) {
         const ang = (i / 8) * Math.PI * 2 + this.rotation * 3;
         ctx.strokeStyle = `rgba(220,160,255,${0.3 + Math.sin(this.pulse + i) * 0.2})`;
