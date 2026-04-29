@@ -343,6 +343,7 @@ const L4 = {
   playerStart: { x: 100, y: 590 },
   deathY: 730,
   physics: { moveSpeed: 5.2 },  // slightly faster player
+  djHint: true,
 
   chaser: { x: 20, y: 580, startDelay: 120 },  // spawn behind player, on ground; freeze 2s before chasing
 

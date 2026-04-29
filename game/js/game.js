@@ -22,7 +22,7 @@ let state, levelIndex, level, player, chaser,
     messageTimer, bgStars, bgTime,
     gravityFlipCooldown, cutsceneTimer,
     oceanWaveTimer, bgBubbles,
-    gravHint;
+    gravHint, djHint, prevCanDJ;
 
 function initStars(levelWidth) {
   bgStars = [];
@@ -237,7 +237,9 @@ function loadLevel(idx) {
   controlsTimer = 320;
   messageTimer = 0;
   gravityFlipCooldown = 0;
-  gravHint = !!level.gravityToggle;
+  gravHint  = !!level.gravityToggle;
+  djHint    = !!level.djHint;
+  prevCanDJ = false;
   bgTime = 0;
   oceanWaveTimer = 0;
   if (level.isOcean) {
@@ -504,6 +506,9 @@ function update() {
 
   // player update (skip during end anim)
   if (!player.endAnimActive) player.update(level.platforms, level.hazards);
+  // dismiss double-jump hint on first actual double jump
+  if (djHint && prevCanDJ && !player.canDoubleJump && !player.onGround) djHint = false;
+  prevCanDJ = player.canDoubleJump;
 
   // chaser update
   if (chaser) {
@@ -740,6 +745,9 @@ function draw() {
     ctx.restore();
   }
 
+  // double-jump hint (level 1)
+  if (djHint) drawDJHint();
+
   // gravity indicator for level 5
   if (level.gravityToggle) drawGravityIndicator();
   if (level.gravityToggle && gravHint) drawGravHint();
@@ -762,6 +770,56 @@ function draw() {
     const a = Math.min(1, messageTimer / 30);
     UI.drawMessage(ctx, W, H, 'Сон завершён', 'Прыжок — следующий сон', a);
   }
+}
+
+function drawDJHint() {
+  const t     = Date.now() / 600;
+  const pulse = 0.72 + Math.sin(t) * 0.28;
+  const cx = W / 2, cy = H / 2 - 60;
+
+  ctx.save();
+
+  // фон таблетки
+  const TW = 340, TH = 44;
+  ctx.globalAlpha = 0.88 * pulse;
+  ctx.fillStyle = '#080318';
+  ctx.beginPath();
+  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 10);
+  ctx.fill();
+
+  // рамка
+  ctx.globalAlpha = 0.80 * pulse;
+  ctx.strokeStyle = '#4870e8';
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 10);
+  ctx.stroke();
+
+  // иконка [Space] — широкая клавиша
+  const kx = cx - 126, ky = cy;
+  const KW = 46, KH = 20;
+  ctx.globalAlpha = 0.95 * pulse;
+  const kg = ctx.createLinearGradient(kx, ky - KH / 2, kx, ky + KH / 2);
+  kg.addColorStop(0, '#304898'); kg.addColorStop(1, '#1a2858');
+  ctx.fillStyle = kg;
+  ctx.beginPath(); ctx.roundRect(kx - KW / 2, ky - KH / 2, KW, KH, 4); ctx.fill();
+  ctx.globalAlpha = 0.40 * pulse;
+  ctx.fillStyle = '#8090d8';
+  ctx.fillRect(kx - KW / 2 + 4, ky - KH / 2 + 3, KW - 8, 3);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#dde8ff';
+  ctx.font = 'bold 10px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('SPACE', kx, ky + 1);
+
+  // текст
+  ctx.globalAlpha = 0.96 * pulse;
+  ctx.fillStyle = '#c8d8ff';
+  ctx.font = '14px sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText('×2 — двойной прыжок в воздухе', cx - 96, cy + 1);
+
+  ctx.restore();
 }
 
 function drawGravHint() {
