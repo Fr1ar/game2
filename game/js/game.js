@@ -435,8 +435,8 @@ function update() {
     }
     gravityFlipCooldown--;
     if (gravityFlipCooldown <= 0) {
-      const toUp   = Input.wasPressed('ArrowUp')   || Input.wasPressed('KeyW');
-      const toDown = Input.wasPressed('ArrowDown')  || Input.wasPressed('KeyS');
+      const toUp   = !level.horizontalGravity && (Input.wasPressed('ArrowUp')   || Input.wasPressed('KeyW'));
+      const toDown = !level.horizontalGravity && (Input.wasPressed('ArrowDown')  || Input.wasPressed('KeyS'));
       const toggle = Input.wasPressed('KeyG');
       if (toUp && player.gravityDir !== -1) {
         player.gravityDir = -1; player.vy = 0; player.canDoubleJump = true;
