@@ -235,6 +235,20 @@ class Shard {
   }
 }
 
+// Sprite sheet for end-of-level Portal: 5 cols × 5 rows = 25 frames.
+const PortalSprite = (() => {
+  const img = new Image();
+  let loaded = false, failed = false;
+  img.onload  = () => { loaded = true; };
+  img.onerror = () => { failed = true; };
+  img.src = 'sprites/Portal_1.png';
+  return {
+    img,
+    cols: 5, rows: 5, frames: 25,
+    isReady: () => loaded && !failed,
+  };
+})();
+
 class Portal {
   constructor(x, y) {
     this.x = x; this.y = y;
@@ -242,6 +256,10 @@ class Portal {
     this.active = false;
     this.pulse = 0;
     this.rotation = 0;
+    this.animTime      = Math.random() * 25;
+    this.frameIdx      = 0;
+    this._spriteCanvas  = null;
+    this._crossfadeCanvas = null;
   }
 
   get cx() { return this.x + this.w / 2; }
@@ -249,48 +267,96 @@ class Portal {
 
   activate() { this.active = true; }
 
+  _buildSpriteCanvas() {
+    const img = PortalSprite.img;
+    const oc  = document.createElement('canvas');
+    oc.width = img.naturalWidth; oc.height = img.naturalHeight;
+    const octx = oc.getContext('2d');
+    octx.drawImage(img, 0, 0);
+    const id = octx.getImageData(0, 0, oc.width, oc.height);
+    const d  = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114 < 40 && Math.max(d[i], d[i+1], d[i+2]) < 60)
+        d[i+3] = 0;
+    }
+    octx.putImageData(id, 0, 0);
+    return oc;
+  }
+
   update() {
-    this.pulse += 0.05;
-    if (this.active) this.rotation += 0.02;
+    this.pulse += 0.06;
+    this.rotation += 0.03;
+    this.animTime += 0.40;
+    this.frameIdx  = Math.floor(this.animTime) % PortalSprite.frames;
   }
 
   draw(ctx, camX, camY) {
     const sx = this.cx - camX, sy = this.cy - camY;
+
+    // sprite-based animation — same pattern as TeleportPortal
+    if (PortalSprite.isReady()) {
+      if (!this._spriteCanvas) this._spriteCanvas = this._buildSpriteCanvas();
+      const img   = this._spriteCanvas;
+      const COLS  = PortalSprite.cols, TOTAL = PortalSprite.frames;
+      const fw    = (img.width  / COLS) | 0;
+      const fh    = (img.height / PortalSprite.rows) | 0;
+      const dh    = 110, dw = (fw / fh) * dh;
+      const alpha = this.active ? 1 : 0.55;
+
+      const raw   = this.animTime % TOTAL;
+      const fA    = Math.floor(raw) % TOTAL;
+      const fB    = (fA + 1) % TOTAL;
+      const blend = raw - Math.floor(raw);
+
+      if (!this._crossfadeCanvas) {
+        this._crossfadeCanvas = document.createElement('canvas');
+        this._crossfadeCanvas.width  = fw;
+        this._crossfadeCanvas.height = fh;
+      }
+      const ofc    = this._crossfadeCanvas;
+      const ofctx  = ofc.getContext('2d');
+      ofctx.clearRect(0, 0, fw, fh);
+      ofctx.globalAlpha = 1;
+      ofctx.drawImage(img, (fA % COLS) * fw, Math.floor(fA / COLS) * fh, fw, fh, 0, 0, fw, fh);
+      if (blend > 0.01) {
+        ofctx.globalAlpha = blend;
+        ofctx.drawImage(img, (fB % COLS) * fw, Math.floor(fB / COLS) * fh, fw, fh, 0, 0, fw, fh);
+      }
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(ofc, 0, 0, fw, fh, sx - dw / 2, sy - dh / 2, dw, dh);
+      ctx.restore();
+      return;
+    }
+
+    // fallback: canvas-drawn
     const alpha = this.active ? 1 : 0.25;
     const scale = this.active ? 1 + Math.sin(this.pulse) * 0.08 : 1;
-
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(sx, sy);
     ctx.scale(scale, scale);
     ctx.rotate(this.rotation);
-
     const r = 30;
     const outerGrad = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r);
     outerGrad.addColorStop(0, this.active ? 'rgba(180,80,255,0.9)' : 'rgba(80,60,120,0.5)');
     outerGrad.addColorStop(1, 'rgba(80,0,160,0)');
     ctx.fillStyle = outerGrad;
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.fill();
-
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
     const innerGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.5);
     innerGrad.addColorStop(0, this.active ? 'rgba(240,180,255,1)' : 'rgba(140,100,200,0.4)');
     innerGrad.addColorStop(1, 'rgba(160,60,255,0)');
     ctx.fillStyle = innerGrad;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
-    ctx.fill();
-
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2); ctx.fill();
     if (this.active) {
       for (let i = 0; i < 8; i++) {
         const ang = (i / 8) * Math.PI * 2 + this.rotation * 3;
         ctx.strokeStyle = `rgba(220,160,255,${0.3 + Math.sin(this.pulse + i) * 0.2})`;
         ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(Math.cos(ang) * r * 0.8, Math.sin(ang) * r * 0.8);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(ang) * r * 0.8, Math.sin(ang) * r * 0.8); ctx.stroke();
       }
     }
     ctx.restore();
@@ -782,7 +848,8 @@ class TeleportPortal {
     this.pulse = 0; this.rotation = 0; this.cooldown = 0;
     this.animTime  = Math.random() * 25;
     this.frameIdx  = 0;
-    this._spriteCanvas = null;
+    this._spriteCanvas    = null;
+    this._crossfadeCanvas = null;
     this.exitFlash = { timer: 0, maxTimer: 55, animTime: 0 };
   }
 
@@ -851,35 +918,61 @@ class TeleportPortal {
       const dh  = 110;
       const dw  = (fw / fh) * dh;
 
-      // основной портал
-      const fx = (this.frameIdx % TeleportPortalSprite.cols) * fw;
-      const fy = Math.floor(this.frameIdx / TeleportPortalSprite.cols) * fh;
+      // основной портал — offscreen crossfade (постоянная яркость)
+      const COLS  = TeleportPortalSprite.cols;
+      const TOTAL = TeleportPortalSprite.frames;
+      const raw   = this.animTime % TOTAL;
+      const fA    = Math.floor(raw) % TOTAL;
+      const fB    = (fA + 1) % TOTAL;
+      const blend = raw - Math.floor(raw);
+
+      if (!this._crossfadeCanvas) {
+        this._crossfadeCanvas = document.createElement('canvas');
+        this._crossfadeCanvas.width  = fw;
+        this._crossfadeCanvas.height = fh;
+      }
+      const ofc   = this._crossfadeCanvas;
+      const ofctx = ofc.getContext('2d');
+      ofctx.clearRect(0, 0, fw, fh);
+      ofctx.globalAlpha = 1;
+      ofctx.drawImage(img, (fA % COLS) * fw, Math.floor(fA / COLS) * fh, fw, fh, 0, 0, fw, fh);
+      if (blend > 0.01) {
+        ofctx.globalAlpha = blend;
+        ofctx.drawImage(img, (fB % COLS) * fw, Math.floor(fB / COLS) * fh, fw, fh, 0, 0, fw, fh);
+      }
+
       ctx.save();
       ctx.imageSmoothingEnabled = true;
       ctx.globalAlpha = alpha;
-      ctx.drawImage(img, fx, fy, fw, fh, sx - dw / 2, sy - dh / 2, dw, dh);
+      ctx.drawImage(ofc, 0, 0, fw, fh, sx - dw / 2, sy - dh / 2, dw, dh);
       ctx.restore();
 
       // exit flash — временный портал в точке выхода
       const ef = this.exitFlash;
       if (ef.timer > 0) {
-        const t   = ef.timer / ef.maxTimer;          // 1 → 0
-        const efi = Math.floor(ef.animTime) % TeleportPortalSprite.frames;
-        const efx = (efi % TeleportPortalSprite.cols) * fw;
-        const efy = Math.floor(efi / TeleportPortalSprite.cols) * fh;
-        // мировые координаты выхода → экранные
-        const destCx = (typeof this.destX === 'function' ? this.destX() : this.destX) + 24;
-        const destCy = (typeof this.destY === 'function' ? this.destY() : this.destY) + 36;
-        const esx = destCx - camX;
-        const esy = destCy - camY;
-        // масштаб: появляется большим, сужается до нуля
-        const sc = t;
+        const t       = ef.timer / ef.maxTimer;
+        const efRaw   = ef.animTime % TOTAL;
+        const efA     = Math.floor(efRaw) % TOTAL;
+        const efB     = (efA + 1) % TOTAL;
+        const efBlend = efRaw - Math.floor(efRaw);
+        const destCx  = (typeof this.destX === 'function' ? this.destX() : this.destX) + 24;
+        const destCy  = (typeof this.destY === 'function' ? this.destY() : this.destY) + 36;
+        const esx     = destCx - camX;
+        const esy     = destCy - camY;
+
+        ofctx.clearRect(0, 0, fw, fh);
+        ofctx.globalAlpha = 1;
+        ofctx.drawImage(img, (efA % COLS) * fw, Math.floor(efA / COLS) * fh, fw, fh, 0, 0, fw, fh);
+        if (efBlend > 0.01) {
+          ofctx.globalAlpha = efBlend;
+          ofctx.drawImage(img, (efB % COLS) * fw, Math.floor(efB / COLS) * fh, fw, fh, 0, 0, fw, fh);
+        }
         ctx.save();
         ctx.imageSmoothingEnabled = true;
-        ctx.globalAlpha = t * 0.9;
         ctx.translate(esx, esy);
-        ctx.scale(sc, sc);
-        ctx.drawImage(img, efx, efy, fw, fh, -dw / 2, -dh / 2, dw, dh);
+        ctx.scale(t, t);
+        ctx.globalAlpha = t * 0.9;
+        ctx.drawImage(ofc, 0, 0, fw, fh, -dw / 2, -dh / 2, dw, dh);
         ctx.restore();
       }
       return;
