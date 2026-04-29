@@ -321,52 +321,54 @@ const SoundFX = (() => {
     }, 2600));
   }
 
-  // ── Level 1: L4 — Кошмар — тёмный гипнотический пульс ──────────────────
-  // Dissonant cluster + резонансный фильтр-свип + удары сердца + жуткие стабы
+  // ── Level 1: L4 — Кошмар — тёмный но мелодичный Am пэд ─────────────────
+  // Am minor pad + мягкий фильтр + тихие удары + нисходящий мотив
   function _bgmNightmare() {
-    const ac = _bgmStart(2.0); if (!ac) return;
-    const rev = _bgmReverb(ac, 0.62, 0.38, 700);
+    const ac = _bgmStart(2.5); if (!ac) return;
+    const rev = _bgmReverb(ac, 0.55, 0.42, 1400);
 
-    _bgmDrone(ac,  55.00, 'sawtooth', 0.08);
-    _bgmDrone(ac,  55.70, 'sawtooth', 0.08);
-    _bgmDrone(ac,  58.27, 'sawtooth', 0.05);  // Bb1 — tritone tension
-    _bgmDrone(ac,  82.50, 'sine',     0.05);
-    _bgmDetune(ac, 110.00, 8,  'triangle', 0.04);
-    _bgmDetune(ac, 440.70, 12, 'sine',     0.016);  // high shimmer
-    // resonant lowpass sweep — slow sweep Q=8 for dramatic effect
-    _bgmFilterSweep(ac, 55.0, 'sawtooth', 0.06, 'lowpass', 380, 340, 0.038, 8);
-    _bgmLFO(ac, 0.20, 0.06, bgmGain.gain);
+    // Am: A C E — properly tuned, no harsh beating
+    _bgmDetune(ac,  55.00, 5, 'sine',     0.11);  // A1
+    _bgmDetune(ac, 110.00, 4, 'sine',     0.09);  // A2
+    _bgmDetune(ac, 130.81, 3, 'sine',     0.07);  // C3
+    _bgmDetune(ac, 164.81, 4, 'triangle', 0.055); // E3
+    _bgmDetune(ac, 220.00, 5, 'sine',     0.04);  // A3
 
-    // Heartbeat
+    // Gentle lowpass sweep — subtle movement, low Q
+    _bgmFilterSweep(ac, 110.0, 'triangle', 0.04, 'lowpass', 500, 700, 0.05, 2.0);
+    _bgmLFO(ac, 0.10, 0.05, bgmGain.gain);
+
+    // Soft heartbeat — lighter amplitude
     bgmTimers.push(setInterval(() => {
       if (!bgmGain) return;
       const t = ac.currentTime;
-      [[0, 0.44], [0.16, 0.27]].forEach(([d, amp]) => {
+      [[0, 0.22], [0.15, 0.14]].forEach(([d, amp]) => {
         const tt = t + d;
         const o = ac.createOscillator(); o.type = 'sine';
-        o.frequency.setValueAtTime(82, tt);
-        o.frequency.exponentialRampToValueAtTime(28, tt + 0.18);
+        o.frequency.setValueAtTime(72, tt);
+        o.frequency.exponentialRampToValueAtTime(32, tt + 0.18);
         const g = ac.createGain(); g.gain.value = 0;
         g.gain.linearRampToValueAtTime(amp, tt + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.001, tt + 0.30);
-        o.connect(g); g.connect(bgmGain); g.connect(rev);
-        o.start(tt); o.stop(tt + 0.35);
+        g.gain.exponentialRampToValueAtTime(0.001, tt + 0.28);
+        o.connect(g); g.connect(bgmGain);
+        o.start(tt); o.stop(tt + 0.32);
       });
-    }, 1200));
+    }, 1500));
 
-    // Dissonant stab (F4/F#4 — creepy tritone)
+    // Descending Am melodic motif — eerie but not harsh
+    const motif = [220, 196.00, 174.61, 164.81, 174.61, 196.00, 220, 246.94];
+    let mi = 0;
     bgmTimers.push(setInterval(() => {
       if (!bgmGain) return;
       const t = ac.currentTime;
-      [349.23, 369.99].forEach(f => {
-        const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
-        const g = ac.createGain(); g.gain.value = 0;
-        g.gain.linearRampToValueAtTime(0.022, t + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
-        o.connect(g); g.connect(bgmGain); g.connect(rev);
-        o.start(t); o.stop(t + 1.3);
-      });
-    }, 8500));
+      const o = ac.createOscillator(); o.type = 'triangle';
+      o.frequency.value = motif[mi++ % motif.length];
+      const g = ac.createGain(); g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.038, t + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 1.9);
+      o.connect(g); g.connect(bgmGain); g.connect(rev);
+      o.start(t); o.stop(t + 2.1);
+    }, 1300));
   }
 
   // ── Level 2: L5 — Сон Падения — головокружительная целотонная гамма ──────

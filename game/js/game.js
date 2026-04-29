@@ -54,7 +54,7 @@ let state, levelIndex, level, player, chaser,
     gravityFlipCooldown, cutsceneTimer,
     oceanWaveTimer, bgBubbles,
     gravHint, djHint, prevCanDJ,
-    chaserAwaitMove;
+    chaserAwaitMove, gravLocked;
 
 function initStars(levelWidth) {
   bgStars = [];
@@ -262,9 +262,10 @@ function loadLevel(idx) {
   controlsTimer = 320;
   messageTimer = 0;
   gravityFlipCooldown = 0;
-  gravHint       = !!level.gravityToggle && !level.gravHintOnShard;
-  djHint         = !!level.djHint;
-  prevCanDJ      = false;
+  gravHint        = !!level.gravityToggle && !level.gravHintOnShard;
+  gravLocked      = !!level.gravHintOnShard;
+  djHint          = !!level.djHint;
+  prevCanDJ       = false;
   chaserAwaitMove = !!level.chaser;
   bgTime = 0;
   oceanWaveTimer = 0;
@@ -464,8 +465,8 @@ function update() {
     }
   }
 
-  // gravity toggle (level 5) — ↑/W тянет к потолку, ↓/S тянет к полу
-  if (level.gravityToggle) {
+  // gravity toggle — заблокировано до появления подсказки (gravHintOnShard)
+  if (level.gravityToggle && !gravLocked) {
     gravityFlipCooldown--;
     if (gravityFlipCooldown <= 0) {
       const toUp   = !level.horizontalGravity && (Input.wasPressed('ArrowUp')   || Input.wasPressed('KeyW'));
@@ -624,7 +625,7 @@ function update() {
       s.collect();
       SoundFX.collectShard();
       shardsCollected++;
-      if (level.gravHintOnShard && shardsCollected === 1) gravHint = true;
+      if (level.gravHintOnShard && shardsCollected === 1) { gravHint = true; gravLocked = false; }
       if (shardsCollected >= level.shards.length) {
         level.portal.activate();
         SoundFX.portalActive();
