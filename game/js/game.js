@@ -175,6 +175,26 @@ function loadLevel(idx) {
   level = LEVELS[idx];
   player = new Player(level.playerStart.x, level.playerStart.y);
   player.setPhysics(level.physics || {});
+
+  // ghost sprite for all levels
+  if (!window._ghostImg) {
+    window._ghostImg = new Image();
+    window._ghostImg.src = 'sprites/sprite-max-px-16 (1).png';
+  }
+  player.ghostSprite  = window._ghostImg;
+  player._ghostCanvas = null;
+
+  if (!window._ghostEndImg) {
+    window._ghostEndImg = new Image();
+    window._ghostEndImg.src = 'sprites/sprite-max-end.png';
+  }
+  player.endSprite       = window._ghostEndImg;
+  player.endAnimActive   = false;
+  player.endAnimDone     = false;
+  player.endAnimFrame    = 0;
+  player.endAnimTimer    = 0;
+  player._ghostEndCanvas = null;
+
   if (level.horizontalGravity) {
     player.gravityAxis = 'x';
     player.gravityDir  = level.initialGravityDir !== undefined ? level.initialGravityDir : -1;
@@ -356,6 +376,14 @@ function update() {
     if (messageTimer > 55 && Input.wasJumped()) {
       player.reset(checkpointX, checkpointY);
       player.setPhysics(level.physics || {});
+      player.ghostSprite     = window._ghostImg;
+      player._ghostCanvas    = null;
+      player.endSprite       = window._ghostEndImg;
+      player.endAnimActive   = false;
+      player.endAnimDone     = false;
+      player.endAnimFrame    = 0;
+      player.endAnimTimer    = 0;
+      player._ghostEndCanvas = null;
       if (level.horizontalGravity) {
         player.gravityAxis = 'x';
         player.gravityDir  = level.initialGravityDir !== undefined ? level.initialGravityDir : -1;
@@ -468,8 +496,8 @@ function update() {
 
   if (level.spring) level.spring.update(player, level.platforms, level.deathY);
 
-  // player update
-  player.update(level.platforms, level.hazards);
+  // player update (skip during end anim)
+  if (!player.endAnimActive) player.update(level.platforms, level.hazards);
 
   // chaser update
   if (chaser) {
@@ -552,12 +580,41 @@ function update() {
     }
   });
 
+  // end anim tick (level 2 portal entry) — skip normal player physics during this
+  if (player.endAnimActive) {
+    player.vx = 0; player.vy = 0;
+    player.endAnimTimer++;
+    if (player.endAnimTimer >= 4) {
+      player.endAnimTimer = 0;
+      player.endAnimFrame++;
+      if (player.endAnimFrame >= 25) {
+        player.endAnimDone   = true;
+        player.endAnimActive = false;
+        if (levelIndex + 1 >= LEVELS.length) {
+          state = State.CUTSCENE; cutsceneTimer = 0;
+          SoundFX.stopBGM(); SoundFX.startCutsceneMusic();
+        } else {
+          state = State.LEVEL_COMPLETE; messageTimer = 0;
+        }
+      }
+    }
+  }
+
   // portal enter
-  if (level.portal.active) {
+  if (level.portal.active && !player.endAnimActive && !player.endAnimDone) {
     const p = level.portal;
     if (overlaps(player, { x: p.cx - 24, y: p.cy - 24, w: 48, h: 48 })) {
       SoundFX.portalEnter();
-      if (levelIndex + 1 >= LEVELS.length) {
+      if (player.endSprite && player.endSprite.complete && player.endSprite.naturalWidth > 0) {
+        player.endAnimActive    = true;
+        player.endAnimFrame     = 0;
+        player.endAnimTimer     = 0;
+        player.endStartWorldX   = player.cx;
+        player.endStartWorldY   = player.cy;
+        player.endPortalWorldX  = p.cx;
+        player.endPortalWorldY  = p.cy;
+        player.vx = 0; player.vy = 0;
+      } else if (levelIndex + 1 >= LEVELS.length) {
         state = State.CUTSCENE;
         cutsceneTimer = 0;
         SoundFX.stopBGM();
