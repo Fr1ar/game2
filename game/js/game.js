@@ -191,6 +191,7 @@ function loadLevel(idx) {
   }
   player.endSprite       = window._ghostEndImg;
 
+
   player.endAnimActive   = false;
   player.endAnimDone     = false;
   player.endAnimFrame    = 0;
