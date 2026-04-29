@@ -377,7 +377,7 @@ const L4 = {
 
   bats: [
     new Bat(1100, 320),         // early — hovering between start and first checkpoint
-    new Bat(2544, 493, true),   // mid-late — sitting on the nearest platform (2480, 520)
+    new Bat(2504, 437, true),   // mid-late — sitting on platform (2480, 520, w=160), centered: 113×83 bat → x=2504, y=520-83=437
     new Bat(3300, 260),         // late — hovering near the climb before the portal
   ],
 

@@ -848,6 +848,20 @@ class FanZone {
   }
 }
 
+// Sprite sheet for Bat: 5 cols × 5 rows = 25 frames (640 × 506 each).
+const BatSprite = (() => {
+  const img = new Image();
+  let loaded = false, failed = false;
+  img.onload  = () => { loaded = true; };
+  img.onerror = () => { failed = true; };
+  img.src = 'sprites/bat.png';
+  return {
+    img,
+    cols: 5, rows: 5, frames: 25,
+    isReady: () => loaded && !failed,
+  };
+})();
+
 // ── Bat ──────────────────────────────────────────────────────
 // Perches on a platform. When the player approaches, takes flight
 // and slowly chases the player while steering around obstacles.
@@ -855,7 +869,8 @@ class Bat {
   constructor(x, y, grounded = false) {
     this.perchX = x; this.perchY = y;
     this.x = x; this.y = y;
-    this.w = 33; this.h = 27;
+    // locked to sprite aspect (566/415 ≈ 1.364); width preserved from previous size
+    this.w = 113; this.h = 83;
     this.grounded = grounded;
     this.vx = 0; this.vy = 0;
     this.state = 'perched';
@@ -865,6 +880,8 @@ class Bat {
     this.lastFlap = 0;
     this.facing = 1;
     this.bob = Math.random() * Math.PI * 2;
+    this.animTime = Math.random() * 25;
+    this.frameIdx = 0;
   }
 
   get cx() { return this.x + this.w / 2; }
@@ -889,14 +906,17 @@ class Bat {
 
     if (this.state === 'perched') {
       if (this.grounded) {
-        // sitting on the ground — almost still, only minimal wing twitches
+        // sitting on the ground — nearly still
         this.flap += 0.05;
+        this.animTime += 0.05;
       } else {
         // hover in place — slow flap with gentle vertical bob
         this.flap += 0.18;
+        this.animTime += 0.20;
         this.y = this.perchY + Math.sin(this.bob) * 3;
         this._maybePlayFlap(dist, 0.45);
       }
+      this.frameIdx = Math.floor(this.animTime) % BatSprite.frames;
       if (dist < this.detectRange) {
         this.state = 'flying';
         this.vy = -0.5;
@@ -905,6 +925,8 @@ class Bat {
     }
 
     this.flap += 0.42;
+    this.animTime += 0.55;
+    this.frameIdx = Math.floor(this.animTime) % BatSprite.frames;
     this._maybePlayFlap(dist, 1.0);
 
     // seek player with light steering
@@ -954,78 +976,35 @@ class Bat {
   }
 
   draw(ctx, camX, camY) {
-    const sx = this.cx - camX;
-    const sy = this.cy - camY;
-    const flying = this.state === 'flying';
-    const flapPhase = flying ? Math.sin(this.flap) : Math.sin(this.flap) * 0.4;
-    const wingExt = flying ? 6 + flapPhase * 4 : 1.5 + flapPhase * 2;
-    const wingY = flapPhase * (flying ? 2.5 : 1.5);
+    const sx = this.x - camX;
+    const sy = this.y - camY;
 
+    // Sprite-based animation when sheet is ready.
+    if (BatSprite.isReady()) {
+      const img = BatSprite.img;
+      const fw = img.width  / BatSprite.cols;
+      const fh = img.height / BatSprite.rows;
+      const fx = (this.frameIdx % BatSprite.cols) * fw;
+      const fy = Math.floor(this.frameIdx / BatSprite.cols) * fh;
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      // mirror horizontally for left-facing bats
+      if (this.facing < 0) {
+        ctx.translate(sx + this.w, sy);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, fx, fy, fw, fh, 0, 0, this.w, this.h);
+      } else {
+        ctx.drawImage(img, fx, fy, fw, fh, sx, sy, this.w, this.h);
+      }
+      ctx.restore();
+      return;
+    }
+
+    // Fallback: simple silhouette while sprite is still loading.
     ctx.save();
-
-    // purple aura — makes the bat readable on dark backgrounds
-    const auraR = 27 + (flying ? Math.abs(flapPhase) * 5 : 0);
-    const aura = ctx.createRadialGradient(sx, sy, 0, sx, sy, auraR);
-    aura.addColorStop(0, 'rgba(180,120,255,0.35)');
-    aura.addColorStop(0.5, 'rgba(140,80,220,0.18)');
-    aura.addColorStop(1, 'rgba(120,60,200,0)');
-    ctx.fillStyle = aura;
-    ctx.beginPath();
-    ctx.arc(sx, sy, auraR, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.translate(sx, sy);
-    ctx.scale(this.facing * 1.5, 1.5);
-
-    // wings (drawn behind body) — dark grey with light outline
-    ctx.fillStyle = '#1a1a22';
-    ctx.strokeStyle = '#b090e0';
-    ctx.lineWidth = 1.2;
-    // left wing
-    ctx.beginPath();
-    ctx.moveTo(-2, -1);
-    ctx.lineTo(-9 - wingExt, -3 + wingY);
-    ctx.lineTo(-12 - wingExt, 1 + wingY);
-    ctx.lineTo(-9 - wingExt * 0.6, 2 + wingY * 0.5);
-    ctx.lineTo(-6 - wingExt * 0.4, 5 + wingY * 0.3);
-    ctx.lineTo(-2, 3);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    // right wing
-    ctx.beginPath();
-    ctx.moveTo(2, -1);
-    ctx.lineTo(9 + wingExt, -3 + wingY);
-    ctx.lineTo(12 + wingExt, 1 + wingY);
-    ctx.lineTo(9 + wingExt * 0.6, 2 + wingY * 0.5);
-    ctx.lineTo(6 + wingExt * 0.4, 5 + wingY * 0.3);
-    ctx.lineTo(2, 3);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // body
     ctx.fillStyle = '#15151c';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 6, 7, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    // ears
-    ctx.beginPath();
-    ctx.moveTo(-4, -5); ctx.lineTo(-3, -10); ctx.lineTo(-1, -5);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(4, -5); ctx.lineTo(3, -10); ctx.lineTo(1, -5);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-
-    // eyes
-    ctx.fillStyle = '#ff4040';
-    ctx.shadowColor = '#ff2020';
-    ctx.shadowBlur = 6;
-    ctx.beginPath(); ctx.arc(-2.5, -1, 1.3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(2.5, -1, 1.3, 0, Math.PI * 2); ctx.fill();
-
+    ctx.fillRect(sx, sy, this.w, this.h);
     ctx.restore();
   }
 }
