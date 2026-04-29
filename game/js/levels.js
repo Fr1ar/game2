@@ -217,120 +217,69 @@ const L2 = {
 // ─────────────────────────────────────────────────────────────
 const L3 = {
   name: 'Ломаный сон',
-  width: 12800, height: 720,
+  width: 5120, height: 720,
   bgColors: ['#020a02', '#030e03', '#051408'],
   playerStart: { x: 60, y: 554 },
   deathY: 730,
   physics: {},
 
   platforms: [
-    // solid safe zones (every ~2133px)
-    new Platform(    0, 590, 220, 18, '#3a1f08'),
-    new Platform( 2100, 560, 220, 18, '#3a1f08'),
-    new Platform( 4200, 560, 220, 18, '#3a1f08'),
-    new Platform( 6300, 560, 220, 18, '#3a1f08'),
-    new Platform( 8400, 560, 220, 18, '#3a1f08'),
-    new Platform(10500, 560, 220, 18, '#3a1f08'),
-    new Platform(12300, 500, 200, 18, '#3a1f08'),
+    // ── Старт
+    new Platform(0, 590, 220, 18, '#3a1f08'),
 
-    // S1 — mostly springs, introduce static (gaps 180–190px)
-    new BranchSpring( 242, 510, 108),
-    new BranchStatic( 430, 445, 102),
-    new BranchSpring( 622, 512, 100),
-    new BranchStatic( 812, 432,  98),
-    new BranchSpring(1002, 506, 102),
-    new BranchStatic(1194, 428,  98),
-    new BranchSpring(1386, 500, 100),
-    new BranchStatic(1578, 432,  96),
-    new BranchSpring(1770, 506, 100),
-    new BranchStatic(1962, 434,  96),
+    // ── S1 — знакомство с высотной вариативностью (spring/static, y=305–530)
+    new BranchSpring( 240, 500, 100),
+    new BranchStatic( 440, 345,  96),
+    new BranchSpring( 640, 530, 100),
+    new BranchStatic( 840, 305,  96),
+    new BranchSpring(1040, 515, 100),
+    new BranchStatic(1240, 365,  96),
+    new BranchSpring(1440, 490, 100),
 
-    // S2 — 50/50 mix (gaps 190–200px)
-    new BranchSpring(2332, 512, 105),
-    new BranchStatic(2528, 435, 100),
-    new BranchSpring(2728, 508, 100),
-    new BranchStatic(2928, 430,  98),
-    new BranchSpring(3128, 505, 102),
-    new BranchStatic(3330, 426,  98),
-    new BranchSpring(3530, 502, 100),
-    new BranchStatic(3732, 428,  96),
-    new BranchSpring(3932, 504, 100),
-    new BranchStatic(4134, 430,  95),
+    // ── Безопасная зона 1
+    new Platform(1600, 560, 220, 18, '#3a1f08'),
 
-    // S3 — more static, gaps 195–210px
-    new BranchStatic(4432, 512, 105),
-    new BranchSpring(4640, 432, 100),
-    new BranchStatic(4850, 508, 100),
-    new BranchSpring(5062, 428,  96),
-    new BranchStatic(5275, 505,  98),
-    new BranchSpring(5488, 424,  96),
-    new BranchStatic(5702, 500,  98),
-    new BranchSpring(5920, 422,  95),
-    new BranchStatic(6138, 498,  95),
+    // ── S2 — глубокие провалы и резкие подъёмы (y=295–545)
+    new BranchStatic(1840, 355, 100),
+    new BranchSpring(2060, 545,  96),
+    new BranchStatic(2260, 315, 100),
+    new BranchSpring(2470, 515,  96),
+    new BranchStatic(2680, 295, 100),
+    new BranchSpring(2900, 540,  96),
+    new BranchStatic(3100, 375,  96),
 
-    // S4 — 70% static, gaps 200–220px
-    new BranchStatic(6542, 512, 105),
-    new BranchSpring(6758, 430, 100),
-    new BranchStatic(6978, 508,  98),
-    new BranchSpring(7200, 425,  96),
-    new BranchStatic(7424, 505,  98),
-    new BranchStatic(7648, 422,  95),
-    new BranchSpring(7876, 500,  96),
-    new BranchStatic(8108, 420,  95),
-    new BranchSpring(8338, 498,  94),
+    // ── Безопасная зона 2
+    new Platform(3280, 560, 220, 18, '#3a1f08'),
 
-    // S5 — 70% static, gaps 210–225px
-    new BranchStatic( 8642, 512, 105),
-    new BranchSpring( 8868, 428, 100),
-    new BranchStatic( 9098, 508,  98),
-    new BranchStatic( 9326, 422,  96),
-    new BranchSpring( 9558, 502,  98),
-    new BranchStatic( 9794, 418,  95),
-    new BranchStatic(10030, 498,  96),
-    new BranchSpring(10268, 420,  95),
-    new BranchStatic(10494, 496,  94),
+    // ── S3 — труднейший: экстремальные перепады (y=285–545)
+    new BranchStatic(3500, 345,  96),
+    new BranchSpring(3740, 545,  94),
+    new BranchStatic(3980, 285,  96),
+    new BranchSpring(4220, 530,  94),
+    new BranchStatic(4460, 305,  96),
+    new BranchSpring(4700, 505,  94),
 
-    // S6 — hardest: 80% static, gaps 220–240px
-    new BranchStatic(10742, 512, 102),
-    new BranchSpring(10978, 425,  98),
-    new BranchStatic(11218, 508,  96),
-    new BranchStatic(11462, 418,  95),
-    new BranchSpring(11710, 500,  96),
-    new BranchStatic(11960, 415,  94),
-    new BranchStatic(12200, 496,  93),
+    // ── Финал
+    new Platform(4880, 500, 200, 18, '#3a1f08'),
   ],
 
   shards: [
-    new Shard( 3130, 462),  // S2 — above BranchSpring(3128,505)
-    new Shard( 6760, 386),  // S4 — above BranchSpring(6758,430) — high challenge
-    new Shard( 9560, 458),  // S5 — above BranchSpring(9558,502)
+    new Shard( 642, 486),   // S1 — над BranchSpring(640,530), 44px выше ветки
+    new Shard(2902, 496),   // S2 — над BranchSpring(2900,540), 44px выше ветки
   ],
 
   hazards: [],
 
   checkpoints: [
-    new Checkpoint( 2140, 522),
-    new Checkpoint( 4240, 522),
-    new Checkpoint( 6340, 522),
-    new Checkpoint( 8440, 522),
-    new Checkpoint(10540, 522),
+    new Checkpoint(1640, 522),
+    new Checkpoint(3320, 522),
   ],
 
-  portal: new Portal(12348, 428),
-
-  umbrellas: [
-    new Umbrella( 1772, 468),   // S1 — above BranchSpring(1770,506)
-    new Umbrella( 3930, 460),   // S2 — above BranchSpring(3932,504)
-    new Umbrella( 6760, 387),   // S4 — near shard 2
-    new Umbrella( 9096, 465),   // S5 — above BranchStatic(9098,508)
-    new Umbrella(11208, 465),   // S6 — above BranchStatic(11218,508)
-  ],
+  portal: new Portal(4940, 428),   // 500 - 72 = 428, стоит на финальной платформе
 
   monkeySpawner: (() => { const ms = new MonkeySpawner(); ms.cooldownMax = 96; return ms; })(),
 
-  forestBg: new ForestBackground(12800),
-
-  parrot: new Parrot([11600]),
+  forestBg: new ForestBackground(5120),
 };
 
 // ─────────────────────────────────────────────────────────────
