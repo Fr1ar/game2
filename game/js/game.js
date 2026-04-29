@@ -561,6 +561,11 @@ function update() {
   // death zone
   if (player.y > level.deathY) player.die();
   if (level.deathMinY !== undefined && player.y + player.h < level.deathMinY) player.die();
+  // horizontal gravity: die when falling through a wall gap off the side
+  if (level.horizontalGravity) {
+    if (player.x + player.w < -40) player.die();
+    if (player.x > level.width + 40) player.die();
+  }
 
   if (player.dead) {
     state = State.DEAD;
