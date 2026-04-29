@@ -426,7 +426,7 @@ const L5 = {
     new Platform(0,    660, 2560, 60, '#1a0a30'),
 
     // floor-level stepping stones (normal gravity navigation)
-    new Platform(100,  560, 160, 18, '#1e1040'),
+    new Platform(220,  560, 160, 18, '#1e1040'),
     new Platform(300,  480, 140, 18, '#1e1040'),
     new Platform(500,  560, 160, 18, '#1e1040'),
     new Platform(700,  480, 140, 18, '#1e1040'),
