@@ -26,7 +26,7 @@ const SoundFX = (() => {
       ctx = new AC();
       masterBus   = ctx.createGain(); masterBus.gain.value   = 0.7;  masterBus.connect(ctx.destination);
       sfxBus      = ctx.createGain(); sfxBus.gain.value      = 0.5;  sfxBus.connect(masterBus);
-      bgmBus      = ctx.createGain(); bgmBus.gain.value      = 0; bgmBus.connect(masterBus);
+      bgmBus      = ctx.createGain(); bgmBus.gain.value      = 0.55; bgmBus.connect(masterBus);
       cutsceneBus = ctx.createGain(); cutsceneBus.gain.value = 0.55; cutsceneBus.connect(masterBus);
     }
     if (ctx.state === 'suspended') ctx.resume();
@@ -199,7 +199,7 @@ const SoundFX = (() => {
 
   // ─────────── BGM ───────────
 
-  function _bgmStart(fadeIn = 1.5) {
+  function _bgmStart(fadeIn = 2.5) {
     const ac = getCtx(); if (!ac) return null;
     bgmGain = ac.createGain();
     bgmGain.gain.value = 0;
@@ -208,6 +208,7 @@ const SoundFX = (() => {
     return ac;
   }
 
+  // Single drone oscillator
   function _bgmDrone(ac, freq, type, gain) {
     const o = ac.createOscillator(); o.type = type; o.frequency.value = freq;
     const g = ac.createGain(); g.gain.value = gain;
@@ -216,12 +217,44 @@ const SoundFX = (() => {
     bgmNodes.push({ o });
   }
 
+  // Two detuned oscillators — chorus / beating effect
+  function _bgmDetune(ac, freq, detuneCents, type, gain) {
+    _bgmDrone(ac, freq, type, gain);
+    _bgmDrone(ac, freq * Math.pow(2, detuneCents / 1200), type, gain * 0.70);
+  }
+
+  // LFO modulation on any AudioParam target
   function _bgmLFO(ac, freq, depth, target) {
     const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
     const g = ac.createGain(); g.gain.value = depth;
     o.connect(g); g.connect(target);
     o.start();
     bgmNodes.push({ o });
+  }
+
+  // Oscillator → bandpass/lowpass filter with LFO sweep → bgmGain
+  function _bgmFilterSweep(ac, freq, oscType, gain, fType, fCenter, fRange, lfoRate, Q) {
+    const o = ac.createOscillator(); o.type = oscType; o.frequency.value = freq;
+    const f = ac.createBiquadFilter(); f.type = fType;
+    f.frequency.value = fCenter; f.Q.value = Q || 2.5;
+    const g = ac.createGain(); g.gain.value = gain;
+    o.connect(f); f.connect(g); g.connect(bgmGain);
+    const lfo = ac.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = lfoRate;
+    const lfoG = ac.createGain(); lfoG.gain.value = fRange;
+    lfo.connect(lfoG); lfoG.connect(f.frequency);
+    o.start(); lfo.start();
+    bgmNodes.push({ o }); bgmNodes.push({ o: lfo });
+  }
+
+  // Delay-feedback reverb bus — returns input node; connect melodic sources to it
+  function _bgmReverb(ac, delayTime, feedback, lpCutoff) {
+    const inp = ac.createGain(); inp.gain.value = 0.28;
+    const dly = ac.createDelay(2.0); dly.delayTime.value = delayTime;
+    const fb  = ac.createGain(); fb.gain.value = feedback;
+    const lpf = ac.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = lpCutoff;
+    inp.connect(dly); dly.connect(lpf); lpf.connect(fb); fb.connect(dly);
+    dly.connect(bgmGain);
+    return inp;
   }
 
   function stopBGM() {
@@ -232,147 +265,285 @@ const SoundFX = (() => {
     bgmTimers = [];
     bgmGain.gain.cancelScheduledValues(now);
     bgmGain.gain.setValueAtTime(bgmGain.gain.value, now);
-    bgmGain.gain.linearRampToValueAtTime(0, now + 0.6);
+    bgmGain.gain.linearRampToValueAtTime(0, now + 0.8);
     const gRef = bgmGain;
     const nRef = bgmNodes;
     bgmGain = null; bgmNodes = []; bgmCurrentLevel = -1;
     setTimeout(() => {
       nRef.forEach(n => { try { n.o && n.o.stop(); } catch (e) {} });
       try { gRef.disconnect(); } catch (e) {}
-    }, 800);
+    }, 1000);
   }
 
-  // L1 — calm major pad
-  function _bgmCalm() {
-    const ac = _bgmStart(); if (!ac) return;
-    _bgmDrone(ac, 130.81, 'sine',     0.18);  // C3
-    _bgmDrone(ac, 196.00, 'sine',     0.13);  // G3
-    _bgmDrone(ac, 261.63, 'sine',     0.10);  // C4
-    _bgmDrone(ac, 392.00, 'triangle', 0.05);  // G4
-    _bgmLFO(ac, 0.12, 0.06, bgmGain.gain);
+  // ── Level 0: L3 — Ломаный сон — психоделический лес ─────────────────────
+  // Am pentatonic detuned pads + bandpass sweep + плавающие гармоники
+  function _bgmForest() {
+    const ac = _bgmStart(3.0); if (!ac) return;
+    const rev = _bgmReverb(ac, 0.46, 0.48, 1800);
+
+    _bgmDetune(ac,  55.00, 7, 'sine',     0.13);  // A1
+    _bgmDetune(ac, 110.00, 5, 'sine',     0.09);  // A2
+    _bgmDetune(ac, 130.81, 4, 'sine',     0.07);  // C3
+    _bgmDetune(ac, 164.81, 3, 'sine',     0.05);  // E3
+    _bgmDetune(ac, 220.00, 6, 'triangle', 0.035); // A3
+    // bandpass sweep — breathing texture
+    _bgmFilterSweep(ac, 82.41, 'sawtooth', 0.045, 'bandpass', 700, 600, 0.07, 3.5);
+    _bgmLFO(ac, 0.08, 0.055, bgmGain.gain);
+    _bgmLFO(ac, 0.22, 0.030, bgmGain.gain);
+
+    // Floating pentatonic harmonics drift in at random
+    const penta = [440, 523.25, 659.25, 880, 1046.5];
+    bgmTimers.push(setInterval(() => {
+      if (!bgmGain) return;
+      const t = ac.currentTime, freq = penta[Math.floor(Math.random() * penta.length)];
+      const dur = 2.5 + Math.random() * 2;
+      const o = ac.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(freq, t);
+      o.frequency.linearRampToValueAtTime(freq * (0.98 + Math.random() * 0.04), t + dur);
+      const g = ac.createGain(); g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.055, t + 0.35);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g); g.connect(bgmGain); g.connect(rev);
+      o.start(t); o.stop(t + dur + 0.1);
+    }, 3400));
+
+    // Glitch clicks — broken dream texture
+    bgmTimers.push(setInterval(() => {
+      if (!bgmGain) return;
+      const t = ac.currentTime;
+      const o = ac.createOscillator(); o.type = 'triangle';
+      o.frequency.value = 1100 + Math.random() * 900;
+      const g = ac.createGain(); g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.016, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+      o.connect(g); g.connect(bgmGain);
+      o.start(t); o.stop(t + 0.09);
+    }, 2600));
   }
 
-  // L2 — water: floating Dm9 with bubble arp
-  function _bgmWater() {
-    const ac = _bgmStart(); if (!ac) return;
-    _bgmDrone(ac, 146.83, 'sine', 0.16);  // D3
-    _bgmDrone(ac, 220.00, 'sine', 0.10);  // A3
-    _bgmDrone(ac, 261.63, 'sine', 0.07);  // C4
-    _bgmLFO(ac, 0.10, 0.10, bgmGain.gain);
-    const notes = [293.66, 349.23, 440, 587.33, 440, 349.23];
-    let i = 0;
+  // ── Level 1: L4 — Кошмар — тёмный гипнотический пульс ──────────────────
+  // Dissonant cluster + резонансный фильтр-свип + удары сердца + жуткие стабы
+  function _bgmNightmare() {
+    const ac = _bgmStart(2.0); if (!ac) return;
+    const rev = _bgmReverb(ac, 0.62, 0.38, 700);
+
+    _bgmDrone(ac,  55.00, 'sawtooth', 0.08);
+    _bgmDrone(ac,  55.70, 'sawtooth', 0.08);
+    _bgmDrone(ac,  58.27, 'sawtooth', 0.05);  // Bb1 — tritone tension
+    _bgmDrone(ac,  82.50, 'sine',     0.05);
+    _bgmDetune(ac, 110.00, 8,  'triangle', 0.04);
+    _bgmDetune(ac, 440.70, 12, 'sine',     0.016);  // high shimmer
+    // resonant lowpass sweep — slow sweep Q=8 for dramatic effect
+    _bgmFilterSweep(ac, 55.0, 'sawtooth', 0.06, 'lowpass', 380, 340, 0.038, 8);
+    _bgmLFO(ac, 0.20, 0.06, bgmGain.gain);
+
+    // Heartbeat
+    bgmTimers.push(setInterval(() => {
+      if (!bgmGain) return;
+      const t = ac.currentTime;
+      [[0, 0.44], [0.16, 0.27]].forEach(([d, amp]) => {
+        const tt = t + d;
+        const o = ac.createOscillator(); o.type = 'sine';
+        o.frequency.setValueAtTime(82, tt);
+        o.frequency.exponentialRampToValueAtTime(28, tt + 0.18);
+        const g = ac.createGain(); g.gain.value = 0;
+        g.gain.linearRampToValueAtTime(amp, tt + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, tt + 0.30);
+        o.connect(g); g.connect(bgmGain); g.connect(rev);
+        o.start(tt); o.stop(tt + 0.35);
+      });
+    }, 1200));
+
+    // Dissonant stab (F4/F#4 — creepy tritone)
+    bgmTimers.push(setInterval(() => {
+      if (!bgmGain) return;
+      const t = ac.currentTime;
+      [349.23, 369.99].forEach(f => {
+        const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f;
+        const g = ac.createGain(); g.gain.value = 0;
+        g.gain.linearRampToValueAtTime(0.022, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+        o.connect(g); g.connect(bgmGain); g.connect(rev);
+        o.start(t); o.stop(t + 1.3);
+      });
+    }, 8500));
+  }
+
+  // ── Level 2: L5 — Сон Падения — головокружительная целотонная гамма ──────
+  // Whole-tone drones + pitch drift + descending swoops + gravity-flip ascents
+  function _bgmFalling() {
+    const ac = _bgmStart(2.5); if (!ac) return;
+    const rev = _bgmReverb(ac, 0.58, 0.52, 2200);
+
+    // Whole-tone: C D E F# — maximally disorienting (no perfect intervals)
+    _bgmDetune(ac,  65.41, 6, 'sine',     0.12);  // C2
+    _bgmDetune(ac,  73.42, 5, 'sine',     0.09);  // D2
+    _bgmDetune(ac,  82.41, 4, 'sine',     0.07);  // E2
+    _bgmDetune(ac,  92.50, 5, 'sine',     0.06);  // F#2
+    _bgmDetune(ac, 207.65, 7, 'triangle', 0.04);  // G#3
+
+    // Pitch-drifting oscillator — floats up and down slowly
+    const driftO = ac.createOscillator(); driftO.type = 'sine'; driftO.frequency.value = 185;
+    const driftG = ac.createGain(); driftG.gain.value = 0.04;
+    const dLFO   = ac.createOscillator(); dLFO.type = 'sine'; dLFO.frequency.value = 0.025;
+    const dLFOG  = ac.createGain(); dLFOG.gain.value = 28;
+    dLFO.connect(dLFOG); dLFOG.connect(driftO.frequency);
+    driftO.connect(driftG); driftG.connect(bgmGain);
+    driftO.start(); dLFO.start();
+    bgmNodes.push({ o: driftO }); bgmNodes.push({ o: dLFO });
+    _bgmLFO(ac, 0.13, 0.07, bgmGain.gain);
+
+    // Descending swoops — the falling sensation
+    bgmTimers.push(setInterval(() => {
+      if (!bgmGain) return;
+      const t = ac.currentTime, f0 = 360 + Math.random() * 240;
+      const o = ac.createOscillator(); o.type = 'triangle';
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(f0 * 0.22, t + 2.4);
+      const g = ac.createGain(); g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.06, t + 0.18);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 2.5);
+      o.connect(g); g.connect(bgmGain); g.connect(rev);
+      o.start(t); o.stop(t + 2.6);
+    }, 4500));
+
+    // Ascending counter-swoops — gravity-flip sensation
     bgmTimers.push(setInterval(() => {
       if (!bgmGain) return;
       const t = ac.currentTime;
       const o = ac.createOscillator(); o.type = 'sine';
-      o.frequency.value = notes[i++ % notes.length];
+      o.frequency.setValueAtTime(92, t);
+      o.frequency.exponentialRampToValueAtTime(460, t + 2.0);
       const g = ac.createGain(); g.gain.value = 0;
-      g.gain.linearRampToValueAtTime(0.06, t + 0.05);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
-      o.connect(g); g.connect(bgmGain);
-      o.start(t); o.stop(t + 1.6);
-    }, 850));
+      g.gain.linearRampToValueAtTime(0.032, t + 0.1);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 2.1);
+      o.connect(g); g.connect(bgmGain); g.connect(rev);
+      o.start(t); o.stop(t + 2.2);
+    }, 7300));
   }
 
-  // L3 — broken: minor drone with dropouts and glitches
-  function _bgmGlitch() {
-    const ac = _bgmStart(); if (!ac) return;
-    _bgmDrone(ac, 110.00, 'sawtooth', 0.07);  // A2
-    _bgmDrone(ac, 130.81, 'sine',     0.10);  // C3
-    _bgmDrone(ac, 164.81, 'sine',     0.08);  // E3
-    _bgmDrone(ac, 220.00, 'triangle', 0.05);  // A3
-    // gain dropouts
+  // ── Level 3: L1 — Спокойный сон — Cmaj7 эфирный пэд ────────────────────
+  // Lush detuned Cmaj7 + gentle filter breath + soft arpeggio
+  function _bgmCalm() {
+    const ac = _bgmStart(3.0); if (!ac) return;
+    const rev = _bgmReverb(ac, 0.44, 0.48, 3200);
+
+    _bgmDetune(ac, 130.81, 4, 'sine',     0.12);  // C3
+    _bgmDetune(ac, 164.81, 3, 'sine',     0.09);  // E3
+    _bgmDetune(ac, 196.00, 5, 'sine',     0.08);  // G3
+    _bgmDetune(ac, 246.94, 3, 'triangle', 0.06);  // B3
+    _bgmDetune(ac, 261.63, 4, 'sine',     0.05);  // C4
+    _bgmFilterSweep(ac, 261.63, 'triangle', 0.038, 'lowpass', 600, 1400, 0.055, 1.8);
+    _bgmLFO(ac, 0.07, 0.050, bgmGain.gain);
+    _bgmLFO(ac, 0.18, 0.028, bgmGain.gain);
+
+    // Slow Cmaj7 arpeggio — long soft tails
+    const arp = [261.63, 329.63, 392.00, 493.88, 392.00, 329.63, 523.25, 493.88];
+    let ai = 0;
     bgmTimers.push(setInterval(() => {
       if (!bgmGain) return;
       const t = ac.currentTime;
-      bgmGain.gain.cancelScheduledValues(t);
-      bgmGain.gain.setValueAtTime(bgmGain.gain.value, t);
-      bgmGain.gain.linearRampToValueAtTime(0, t + 0.04);
-      bgmGain.gain.linearRampToValueAtTime(1, t + 0.20);
-    }, 4000));
-    // glitch ticks
-    bgmTimers.push(setInterval(() => {
-      if (!bgmGain) return;
-      const t = ac.currentTime;
-      const o = ac.createOscillator(); o.type = 'square';
-      o.frequency.value = 800 + Math.random() * 1400;
+      const o = ac.createOscillator(); o.type = 'sine';
+      o.frequency.value = arp[ai++ % arp.length];
       const g = ac.createGain(); g.gain.value = 0;
-      g.gain.linearRampToValueAtTime(0.04, t + 0.005);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-      o.connect(g); g.connect(bgmGain);
-      o.start(t); o.stop(t + 0.06);
-    }, 2400));
+      g.gain.linearRampToValueAtTime(0.048, t + 0.06);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 2.4);
+      o.connect(g); g.connect(bgmGain); g.connect(rev);
+      o.start(t); o.stop(t + 2.6);
+    }, 1700));
   }
 
-  // L4 — nightmare: dissonant low + heartbeat
-  function _bgmNightmare() {
-    const ac = _bgmStart(); if (!ac) return;
-    _bgmDrone(ac, 55.00, 'sawtooth', 0.10);
-    _bgmDrone(ac, 55.7,  'sawtooth', 0.10);
-    _bgmDrone(ac, 58.3,  'triangle', 0.05);
-    _bgmDrone(ac, 82.5,  'sine',     0.06);
-    _bgmDrone(ac, 220,   'sine',     0.022);
-    _bgmLFO(ac, 0.30, 0.05, bgmGain.gain);
+  // ── Level 4: L2 — Водный сон — глубоководная психоделия ─────────────────
+  // Dm + sub-bass + deep filter sweep + whale tones + bubble arp
+  function _bgmWater() {
+    const ac = _bgmStart(3.5); if (!ac) return;
+    const rev = _bgmReverb(ac, 0.72, 0.55, 1100);
+
+    _bgmDrone(ac,   36.71, 'sine',     0.10);   // D1 sub-bass
+    _bgmDetune(ac,  73.42, 6, 'sine',  0.14);   // D2
+    _bgmDetune(ac,  87.31, 5, 'sine',  0.10);   // F2
+    _bgmDetune(ac, 110.00, 4, 'sine',  0.08);   // A2
+    _bgmDetune(ac, 146.83, 3, 'sine',  0.065);  // D3
+    _bgmDetune(ac, 220.00, 5, 'triangle', 0.04);// A3
+    // deep filter sweep — water pressure morphing
+    _bgmFilterSweep(ac, 73.42, 'sawtooth', 0.04, 'lowpass', 280, 520, 0.028, 4.5);
+    _bgmLFO(ac, 0.050, 0.07, bgmGain.gain);
+    _bgmLFO(ac, 0.130, 0.04, bgmGain.gain);
+
+    // Whale-like long pitch glides
     bgmTimers.push(setInterval(() => {
       if (!bgmGain) return;
       const t = ac.currentTime;
-      [[0, 0.45], [0.14, 0.28]].forEach(([d, amp]) => {
-        const o = ac.createOscillator(); o.type = 'sine';
-        const tt = t + d;
-        o.frequency.setValueAtTime(85, tt);
-        o.frequency.exponentialRampToValueAtTime(28, tt + 0.18);
-        const g = ac.createGain(); g.gain.value = 0;
-        g.gain.linearRampToValueAtTime(amp, tt + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.001, tt + 0.32);
-        o.connect(g); g.connect(bgmGain);
-        o.start(tt); o.stop(tt + 0.4);
-      });
-    }, 1100));
-  }
-
-  // L5 — falling: whole-tone disorienting pad with descending swooshes
-  function _bgmFalling() {
-    const ac = _bgmStart(); if (!ac) return;
-    _bgmDrone(ac,  65.41, 'sine', 0.13);  // C2
-    _bgmDrone(ac,  73.42, 'sine', 0.10);  // D2
-    _bgmDrone(ac,  92.50, 'sine', 0.08);  // F#2
-    _bgmDrone(ac, 207.65, 'sine', 0.04);  // G#3
-    _bgmLFO(ac, 0.15, 0.08, bgmGain.gain);
-    bgmTimers.push(setInterval(() => {
-      if (!bgmGain) return;
-      const t = ac.currentTime;
-      const o = ac.createOscillator(); o.type = 'triangle';
-      o.frequency.setValueAtTime(440, t);
-      o.frequency.exponentialRampToValueAtTime(110, t + 1.5);
+      const base = [146.83, 174.61, 220, 293.66][Math.floor(Math.random() * 4)];
+      const o = ac.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(base * 0.96, t);
+      o.frequency.linearRampToValueAtTime(base * 1.04, t + 3.2);
+      o.frequency.linearRampToValueAtTime(base, t + 5.5);
       const g = ac.createGain(); g.gain.value = 0;
-      g.gain.linearRampToValueAtTime(0.05, t + 0.2);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 1.6);
-      o.connect(g); g.connect(bgmGain);
-      o.start(t); o.stop(t + 1.7);
-    }, 4400));
+      g.gain.linearRampToValueAtTime(0.058, t + 0.9);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 5.8);
+      o.connect(g); g.connect(bgmGain); g.connect(rev);
+      o.start(t); o.stop(t + 6.0);
+    }, 5800));
+
+    // Bubble arp — Dm notes
+    const bubbles = [293.66, 349.23, 440, 587.33, 440, 349.23, 293.66, 220];
+    let bi = 0;
+    bgmTimers.push(setInterval(() => {
+      if (!bgmGain) return;
+      const t = ac.currentTime;
+      const o = ac.createOscillator(); o.type = 'sine';
+      o.frequency.value = bubbles[bi++ % bubbles.length];
+      const g = ac.createGain(); g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.038, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 1.7);
+      o.connect(g); g.connect(bgmGain); g.connect(rev);
+      o.start(t); o.stop(t + 1.9);
+    }, 920));
   }
 
-  // L6 — horizontal: slow ethereal with sideways swoosh pulses
+  // ── Level 5: L6 — Горизонтальный сон — невесомость и пространство ────────
+  // Fm detuned pads + long delay + wide bandpass + spatial melody + low pulse
   function _bgmHorizontal() {
-    const ac = _bgmStart(); if (!ac) return;
-    _bgmDrone(ac,  87.31, 'sine',     0.14);  // F2
-    _bgmDrone(ac, 130.81, 'sine',     0.10);  // C3
-    _bgmDrone(ac, 174.61, 'sine',     0.07);  // F3
-    _bgmDrone(ac, 261.63, 'triangle', 0.04);  // C4
-    _bgmLFO(ac, 0.09, 0.07, bgmGain.gain);
-    const notes = [174.61, 196.00, 220.00, 261.63, 220.00, 196.00];
-    let ni = 0;
+    const ac = _bgmStart(3.0); if (!ac) return;
+    const rev = _bgmReverb(ac, 0.90, 0.58, 2000);
+
+    _bgmDetune(ac,  87.31, 5, 'sine',     0.13);   // F2
+    _bgmDetune(ac, 103.83, 4, 'sine',     0.10);   // Ab2
+    _bgmDetune(ac, 130.81, 6, 'sine',     0.08);   // C3
+    _bgmDetune(ac, 174.61, 4, 'triangle', 0.065);  // F3
+    _bgmDetune(ac, 261.63, 5, 'triangle', 0.038);  // C4
+    _bgmFilterSweep(ac, 174.61, 'sawtooth', 0.038, 'bandpass', 500, 1400, 0.042, 3.0);
+    _bgmLFO(ac, 0.055, 0.06, bgmGain.gain);
+    _bgmLFO(ac, 0.160, 0.03, bgmGain.gain);
+
+    // Floating spatial melody — long sustained notes with slight pitch drift
+    const space = [174.61, 196.00, 220.00, 261.63, 220.00, 246.94, 196.00, 174.61];
+    let si = 0;
+    bgmTimers.push(setInterval(() => {
+      if (!bgmGain) return;
+      const t = ac.currentTime, freq = space[si++ % space.length];
+      const o = ac.createOscillator(); o.type = 'triangle';
+      o.frequency.setValueAtTime(freq, t);
+      o.frequency.linearRampToValueAtTime(freq * (0.99 + Math.random() * 0.02), t + 2.8);
+      const g = ac.createGain(); g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.042, t + 0.12);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 3.0);
+      o.connect(g); g.connect(bgmGain); g.connect(rev);
+      o.start(t); o.stop(t + 3.2);
+    }, 1450));
+
+    // Deep F1 pulse — gravity shift pulse
     bgmTimers.push(setInterval(() => {
       if (!bgmGain) return;
       const t = ac.currentTime;
-      const o = ac.createOscillator(); o.type = 'triangle';
-      o.frequency.value = notes[ni++ % notes.length];
+      const o = ac.createOscillator(); o.type = 'sine'; o.frequency.value = 43.65;
       const g = ac.createGain(); g.gain.value = 0;
-      g.gain.linearRampToValueAtTime(0.05, t + 0.04);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+      g.gain.linearRampToValueAtTime(0.065, t + 0.3);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 3.5);
       o.connect(g); g.connect(bgmGain);
-      o.start(t); o.stop(t + 2.0);
-    }, 1200));
+      o.start(t); o.stop(t + 3.7);
+    }, 4200));
   }
 
   function playBGM(levelIndex) {
@@ -380,12 +551,12 @@ const SoundFX = (() => {
     stopBGM();
     bgmCurrentLevel = levelIndex;
     switch (levelIndex) {
-      case 0: _bgmCalm();      break;
-      case 1: _bgmWater();     break;
-      case 2: _bgmGlitch();    break;
-      case 3: _bgmNightmare(); break;
-      case 4: _bgmFalling();    break;
-      case 5: _bgmHorizontal(); break;
+      case 0: _bgmForest();     break;  // L3 — Ломаный сон
+      case 1: _bgmNightmare();  break;  // L4 — Кошмар
+      case 2: _bgmFalling();    break;  // L5 — Сон Падения
+      case 3: _bgmCalm();       break;  // L1 — Спокойный сон
+      case 4: _bgmWater();      break;  // L2 — Водный сон
+      case 5: _bgmHorizontal(); break;  // L6 — Горизонтальный
     }
   }
 
