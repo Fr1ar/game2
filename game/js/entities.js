@@ -1030,17 +1030,34 @@ class Bat {
   }
 }
 
+// Sprite sheet for SpringJumper: 4 cols × 4 rows = 16 frames.
+// Frame 0 (top-left) is the idle pose; frames 1..15 play during a bounce.
+const SpringSprite = (() => {
+  const img = new Image();
+  let loaded = false, failed = false;
+  img.onload  = () => { loaded = true; };
+  img.onerror = () => { failed = true; };
+  img.src = 'sprites/spring.png';
+  return {
+    img,
+    cols: 4, rows: 4, frames: 16,
+    isReady: () => loaded && !failed,
+  };
+})();
+
 // ── SpringJumper ─────────────────────────────────────────────
 class SpringJumper {
   constructor(x, y) {
     this.spawnX = x; this.spawnY = y;
     this.startX = x; this.startY = y;
     this.x = x; this.y = y;
-    this.w = 44; this.h = 28;
+    // sprite frame is 467 × 508; w=50 → h ≈ 50 * 508/467 ≈ 54
+    this.w = 50; this.h = 54;
     this.vx = 0; this.vy = 0;
     this.onGround = false;
     this.squish = 0;
     this.squishTimer = 0;
+    this.frameIdx = 0;     // sprite frame: 0 = idle, 1..15 = bounce
     this.LAUNCH = 26;
   }
 
@@ -1087,8 +1104,11 @@ class SpringJumper {
       this.squishTimer--;
       const t = 1 - this.squishTimer / 18;
       this.squish = (t < 0.5 ? t * 2 : (1 - t) * 2) * 0.55;
+      // map 18 game frames → sprite frames 1..15
+      this.frameIdx = Math.min(15, Math.floor((18 - this.squishTimer) * 15 / 18) + 1);
     } else {
       this.squish = 0;
+      this.frameIdx = 0;  // idle
     }
   }
 
@@ -1100,6 +1120,28 @@ class SpringJumper {
 
   draw(ctx, camX, camY) {
     const sx = this.x - camX, sy = this.y - camY;
+
+    // Sprite-based animation when the sheet is loaded.
+    if (SpringSprite.isReady()) {
+      const img = SpringSprite.img;
+      const fw = img.width  / SpringSprite.cols;
+      const fh = img.height / SpringSprite.rows;
+      const fx = (this.frameIdx % SpringSprite.cols) * fw;
+      const fy = Math.floor(this.frameIdx / SpringSprite.cols) * fh;
+
+      // sprite drawn at the collider's exact footprint (44 × 28)
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, fx, fy, fw, fh, sx, sy, this.w, this.h);
+      // ground shadow
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(sx + 2, sy + this.h + 1, this.w, 3);
+      ctx.restore();
+      return;
+    }
+
+    // Fallback vector drawing.
     const sh = this.h * (1 - this.squish * 0.55);
     const sw = this.w * (1 + this.squish * 0.3);
     const ox = (sw - this.w) / 2;
