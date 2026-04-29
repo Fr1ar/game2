@@ -500,6 +500,7 @@ const L6 = {
   deathY: 2760, deathMinY: -60,
   physics: { gravity: 0.35, jumpForce: 18, djForce: 15, moveSpeed: 4.5, friction: 0.88 },
   horizontalGravity: true, initialGravityDir: -1,
+  gravityToggle: true,
 
   platforms: [
     // ── Левая стена (пол при gravityDir=-1) — прерывистая ──────────────────

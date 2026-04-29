@@ -746,7 +746,7 @@ function draw() {
   if (level.gravityToggle && gravHint) drawGravHint();
 
   // wall indicator for level 6
-  if (level.horizontalGravity) drawWallIndicator();
+  if (level.horizontalGravity && !level.gravityToggle) drawWallIndicator();
 
   // chaser proximity warning
   if (chaser) drawChaserWarning();
