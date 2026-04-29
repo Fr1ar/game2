@@ -394,7 +394,7 @@ const L4 = {
 L4.spring = new SpringJumper(200, 630);
 L4.teleportPortals = [
   new TeleportPortal(
-    3700, 632,          // under the final portal platform (x=3650-3840, floor level)
+    3700, 588,          // under the final portal platform (x=3650-3840), sitting on floor (660-72=588)
     () => L4.spring.x - 100,
     () => 624,
   ),
