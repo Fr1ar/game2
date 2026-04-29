@@ -395,16 +395,19 @@ function update() {
     }
   }
 
-  // gravity toggle (level 5)
+  // gravity toggle (level 5) — ↑/W тянет к потолку, ↓/S тянет к полу
   if (level.gravityToggle) {
     gravityFlipCooldown--;
-    if (gravityFlipCooldown <= 0 &&
-        (Input.wasPressed('ArrowDown') || Input.wasPressed('KeyS'))) {
-      player.gravityDir *= -1;
-      player.vy = 0;
-      player.canDoubleJump = true;
-      gravityFlipCooldown = 18;
-      SoundFX.gravityFlip();
+    if (gravityFlipCooldown <= 0) {
+      const toUp   = Input.wasPressed('ArrowUp')   || Input.wasPressed('KeyW');
+      const toDown = Input.wasPressed('ArrowDown')  || Input.wasPressed('KeyS');
+      if (toUp && player.gravityDir !== -1) {
+        player.gravityDir = -1; player.vy = 0; player.canDoubleJump = true;
+        gravityFlipCooldown = 18; SoundFX.gravityFlip();
+      } else if (toDown && player.gravityDir !== 1) {
+        player.gravityDir =  1; player.vy = 0; player.canDoubleJump = true;
+        gravityFlipCooldown = 18; SoundFX.gravityFlip();
+      }
     }
   }
 
@@ -693,28 +696,68 @@ function draw() {
 }
 
 function drawGravityIndicator() {
-  const inverted = player.gravityDir < 0;
-  const t = Date.now() / 400;
-  const pulse = 0.7 + Math.sin(t) * 0.3;
-  const x = W - 52, y = H - 52;
+  const inv = player.gravityDir < 0;  // true = тянет к потолку
+  const t   = Date.now() / 350;
+  const pulse = 0.6 + Math.sin(t) * 0.4;
+
+  // размеры панели
+  const PW = 118, PH = 72;
+  const px = W - PW - 14, py = H - PH - 14;
 
   ctx.save();
-  ctx.globalAlpha = 0.8 * pulse;
-  ctx.fillStyle = inverted ? '#aa60ff' : '#6080ff';
+
+  // ── фон панели ────────────────────────────────────────────────────────────
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = '#0a0618';
   ctx.beginPath();
-  ctx.arc(x, y, 18, 0, Math.PI * 2);
+  ctx.roundRect(px, py, PW, PH, 10);
   ctx.fill();
-  ctx.globalAlpha = 1;
+
+  ctx.globalAlpha = 0.45;
+  ctx.strokeStyle = inv ? '#aa60ff' : '#5070ff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(px, py, PW, PH, 10);
+  ctx.stroke();
+
+  // ── кнопка ↑  (к потолку / инверсия) ─────────────────────────────────────
+  const upActive = inv;
+  ctx.globalAlpha = upActive ? (0.85 + Math.sin(t) * 0.15) : 0.28;
+  ctx.fillStyle = upActive ? '#9040e8' : '#2a2040';
+  ctx.beginPath();
+  ctx.roundRect(px + 6, py + 6, PW - 12, 26, 6);
+  ctx.fill();
+
+  ctx.globalAlpha = upActive ? 1 : 0.35;
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold 20px sans-serif';
+  ctx.font = `bold ${upActive ? 13 : 12}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(inverted ? '↑' : '↓', x, y);
+  ctx.fillText('↑  W / ↑  →  потолок', px + PW / 2, py + 19);
 
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = '#9080c0';
-  ctx.font = '11px sans-serif';
-  ctx.fillText('↓/S — flip', x, y + 26);
+  // ── кнопка ↓  (к полу / обычная) ─────────────────────────────────────────
+  const dnActive = !inv;
+  ctx.globalAlpha = dnActive ? (0.85 + Math.sin(t) * 0.15) : 0.28;
+  ctx.fillStyle = dnActive ? '#3060d0' : '#1a2040';
+  ctx.beginPath();
+  ctx.roundRect(px + 6, py + PH - 32, PW - 12, 26, 6);
+  ctx.fill();
+
+  ctx.globalAlpha = dnActive ? 1 : 0.35;
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${dnActive ? 13 : 12}px sans-serif`;
+  ctx.fillText('↓  S / ↓  →  пол', px + PW / 2, py + PH - 19);
+
+  // ── пульсирующая стрелка активного направления ────────────────────────────
+  const arrowX = px + PW - 18;
+  const arrowY = inv ? py + 19 : py + PH - 19;
+  ctx.globalAlpha = 0.9 * pulse;
+  ctx.fillStyle = inv ? '#d090ff' : '#80aaff';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(inv ? '↑' : '↓', arrowX, arrowY);
+
   ctx.restore();
 }
 
@@ -1261,7 +1304,7 @@ function drawIntroScreen() {
   ctx.font = '15px sans-serif';
   const levels = [
     'Сон 1 — Кошмар (преследователь)',
-    'Сон 2 — Падение (инверсия гравитации ↓/S)',
+    'Сон 2 — Падение (↑/W — потолок, ↓/S — пол)',
     'Сон 3 — Спокойный (туториал)',
     'Сон 4 — Водный (слабая гравитация)',
     'Сон 5 — Ломаный (исчезающие платформы)',
