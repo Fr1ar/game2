@@ -18,88 +18,236 @@ class Platform {
 class Shard {
   constructor(x, y) {
     this.x = x; this.y = y;
-    this.w = 20; this.h = 20;
+    this.w = 40; this.h = 40;
     this.collected = false;
     this.angle = 0;
     this.pulse = 0;
-    this.particles = [];
+    this.bob = Math.random() * Math.PI * 2;  // random starting phase
+    this.sparkles = [];   // ambient floating sparkles
+    this.particles = [];  // collect burst
+    this._sparkTimer = 0;
   }
 
   get cx() { return this.x + this.w / 2; }
   get cy() { return this.y + this.h / 2; }
 
-  update(dt) {
-    this.angle += 0.04;
-    this.pulse += 0.07;
-    this.particles = this.particles.filter(p => p.life > 0);
-    this.particles.forEach(p => {
+  update() {
+    this.angle += 0.022;   // slow, majestic rotation
+    this.pulse += 0.055;
+    this.bob   += 0.038;
+
+    // spawn ambient sparkles while not collected
+    if (!this.collected) {
+      this._sparkTimer++;
+      if (this._sparkTimer >= 7) {
+        this._sparkTimer = 0;
+        const ang = Math.random() * Math.PI * 2;
+        const r   = 16 + Math.random() * 14;
+        const ml  = 30 + Math.random() * 25;
+        this.sparkles.push({
+          x: this.cx + Math.cos(ang) * r,
+          y: this.cy + Math.sin(ang) * r,
+          vx: (Math.random() - 0.5) * 0.4,
+          vy: -0.5 - Math.random() * 0.6,
+          life: ml, maxLife: ml,
+          r: 1 + Math.random() * 2,
+        });
+      }
+    }
+
+    this.sparkles = this.sparkles.filter(s => {
+      s.x += s.vx; s.y += s.vy; s.life--;
+      return s.life > 0;
+    });
+
+    this.particles = this.particles.filter(p => {
       p.x += p.vx; p.y += p.vy;
-      p.life -= 1;
-      p.vy += 0.05;
+      p.vx *= 0.95; p.vy *= 0.95;
+      p.vy -= 0.04;
+      p.life--;
+      return p.life > 0;
     });
   }
 
   collect() {
     this.collected = true;
-    for (let i = 0; i < 20; i++) {
-      const ang = Math.random() * Math.PI * 2;
-      const spd = 1 + Math.random() * 3;
+    const COLORS = ['#ffffff', '#b0eeff', '#d0b0ff', '#80d8ff', '#ffe080'];
+    for (let i = 0; i < 48; i++) {
+      const ang = (i / 48) * Math.PI * 2 + Math.random() * 0.25;
+      const spd = 1.2 + Math.random() * 5;
+      const ml  = 45 + Math.random() * 35;
       this.particles.push({
         x: this.cx, y: this.cy,
         vx: Math.cos(ang) * spd,
-        vy: Math.sin(ang) * spd - 2,
-        life: 30 + Math.random() * 20
+        vy: Math.sin(ang) * spd - 1.5,
+        life: ml, maxLife: ml,
+        r: i % 5 === 0 ? 5 : 1.5 + Math.random() * 2.5,
+        color: COLORS[i % COLORS.length],
       });
     }
   }
 
+  // 7-sided gem silhouette at radius r
+  _gemPath(ctx, r) {
+    ctx.moveTo(0, -r);
+    ctx.lineTo( r * 0.62, -r * 0.30);
+    ctx.lineTo( r * 0.80,  r * 0.32);
+    ctx.lineTo( r * 0.38,  r);
+    ctx.lineTo(-r * 0.38,  r);
+    ctx.lineTo(-r * 0.80,  r * 0.32);
+    ctx.lineTo(-r * 0.62, -r * 0.30);
+    ctx.closePath();
+  }
+
   draw(ctx, camX, camY) {
-    // draw burst particles even after collected
+    // ── collect burst particles ───────────────────────────────
     this.particles.forEach(p => {
-      const a = p.life / 50;
+      const a = Math.pow(p.life / p.maxLife, 1.6);
       ctx.save();
       ctx.globalAlpha = a;
-      ctx.fillStyle = '#a0e0ff';
+      ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.arc(p.x - camX, p.y - camY, 2, 0, Math.PI * 2);
+      ctx.arc(p.x - camX, p.y - camY, p.r, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     });
 
     if (this.collected) return;
 
-    const sx = this.cx - camX, sy = this.cy - camY;
-    const glow = 10 + Math.sin(this.pulse) * 5;
+    const HOVER = 26;  // px от центра хитбокса — визуальное парение от поверхности
+    // hoverDX/hoverDY задают направление парения (по умолч. вверх от пола: dy=-1)
+    const hdx   = this.hoverDX ?? 0;
+    const hdy   = this.hoverDY ?? -1;
+    const bobY  = Math.sin(this.bob) * 6;
+    const pulse = Math.sin(this.pulse);
+    const sx = this.cx - camX + hdx * HOVER;
+    const sy = this.cy - camY + hdy * HOVER + bobY;
+    const R  = 18;  // gem radius
 
     ctx.save();
-    // glow
-    const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, glow * 2);
-    grad.addColorStop(0, 'rgba(160,224,255,0.6)');
-    grad.addColorStop(1, 'rgba(160,224,255,0)');
-    ctx.fillStyle = grad;
+
+    // ── far outer haze ────────────────────────────────────────
+    const hazeR = R * 3.8 + pulse * 6;
+    const hazeG = ctx.createRadialGradient(sx, sy, R, sx, sy, hazeR);
+    hazeG.addColorStop(0, `rgba(140,200,255,${0.12 + pulse * 0.05})`);
+    hazeG.addColorStop(0.5, `rgba(160,100,255,${0.06})`);
+    hazeG.addColorStop(1,   'rgba(80,40,200,0)');
+    ctx.fillStyle = hazeG;
     ctx.beginPath();
-    ctx.arc(sx, sy, glow * 2, 0, Math.PI * 2);
+    ctx.arc(sx, sy, hazeR, 0, Math.PI * 2);
     ctx.fill();
 
-    // crystal shape
+    // ── mid glow ─────────────────────────────────────────────
+    const midR = R * 2 + pulse * 4;
+    const midG = ctx.createRadialGradient(sx, sy, 0, sx, sy, midR);
+    midG.addColorStop(0, `rgba(220,245,255,${0.50 + pulse * 0.20})`);
+    midG.addColorStop(0.5, `rgba(160,220,255,0.20)`);
+    midG.addColorStop(1,   'rgba(120,160,255,0)');
+    ctx.fillStyle = midG;
+    ctx.beginPath();
+    ctx.arc(sx, sy, midR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── ambient sparkles ──────────────────────────────────────
+    this.sparkles.forEach(sp => {
+      const a = Math.pow(sp.life / sp.maxLife, 0.7) * 0.9;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#dff6ff';
+      ctx.beginPath();
+      ctx.arc(sp.x - camX, sp.y - camY + bobY, sp.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    // ── gem body ──────────────────────────────────────────────
     ctx.translate(sx, sy);
     ctx.rotate(this.angle);
-    ctx.fillStyle = '#c0eeff';
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.5;
+
+    // drop shadow
+    ctx.save();
+    ctx.translate(2, 3);
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#1a0040';
     ctx.beginPath();
-    ctx.moveTo(0, -10);
-    ctx.lineTo(6, -2);
-    ctx.lineTo(4, 8);
-    ctx.lineTo(0, 6);
-    ctx.lineTo(-4, 8);
-    ctx.lineTo(-6, -2);
+    this._gemPath(ctx, R);
+    ctx.fill();
+    ctx.restore();
+
+    // main gem fill — diagonal gradient (light → deep)
+    const bodyG = ctx.createLinearGradient(-R * 0.7, -R, R * 0.7, R);
+    bodyG.addColorStop(0,    '#f0faff');
+    bodyG.addColorStop(0.25, '#88d8ff');
+    bodyG.addColorStop(0.55, '#9070e8');
+    bodyG.addColorStop(1,    '#4020a0');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = bodyG;
+    ctx.beginPath();
+    this._gemPath(ctx, R);
+    ctx.fill();
+
+    // upper highlight facet (bright frosted cap)
+    ctx.fillStyle = `rgba(255,255,255,${0.5 + pulse * 0.15})`;
+    ctx.beginPath();
+    ctx.moveTo(0, -R);
+    ctx.lineTo( R * 0.62, -R * 0.30);
+    ctx.lineTo( R * 0.10, -R * 0.08);
+    ctx.lineTo(-R * 0.62, -R * 0.30);
     ctx.closePath();
     ctx.fill();
+
+    // side-left secondary highlight
+    ctx.fillStyle = 'rgba(200,240,255,0.22)';
+    ctx.beginPath();
+    ctx.moveTo(-R * 0.62, -R * 0.30);
+    ctx.lineTo(-R * 0.10, -R * 0.08);
+    ctx.lineTo(-R * 0.80,  R * 0.32);
+    ctx.closePath();
+    ctx.fill();
+
+    // inner pulsing core
+    const coreG = ctx.createRadialGradient(0, -R * 0.15, 0, 0, -R * 0.1, R * 0.65);
+    coreG.addColorStop(0, `rgba(255,255,255,${0.75 + pulse * 0.25})`);
+    coreG.addColorStop(0.5, `rgba(180,240,255,0.3)`);
+    coreG.addColorStop(1,   'rgba(160,100,255,0)');
+    ctx.fillStyle = coreG;
+    ctx.beginPath();
+    ctx.arc(0, -R * 0.1, R * 0.65, 0, Math.PI * 2);
+    ctx.fill();
+
+    // gem outline
+    ctx.strokeStyle = `rgba(255,255,255,${0.55 + pulse * 0.35})`;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    this._gemPath(ctx, R);
     ctx.stroke();
+
+    // inner structure lines (facet edges)
+    ctx.strokeStyle = 'rgba(210,245,255,0.28)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, -R);       ctx.lineTo(0,  R * 0.55); // vertical
+    ctx.moveTo(-R * 0.62, -R * 0.30); ctx.lineTo(R * 0.62, -R * 0.30); // girdle top
+    ctx.moveTo(-R * 0.80,  R * 0.32); ctx.lineTo(R * 0.80,  R * 0.32); // girdle bot
+    ctx.stroke();
+
     ctx.restore();
   }
 }
+
+// Sprite sheet for end-of-level Portal: 5 cols × 5 rows = 25 frames.
+const PortalSprite = (() => {
+  const img = new Image();
+  let loaded = false, failed = false;
+  img.onload  = () => { loaded = true; };
+  img.onerror = () => { failed = true; };
+  img.src = 'sprites/Portal_1.png';
+  return {
+    img,
+    cols: 5, rows: 5, frames: 25,
+    isReady: () => loaded && !failed,
+  };
+})();
 
 class Portal {
   constructor(x, y) {
@@ -108,6 +256,10 @@ class Portal {
     this.active = false;
     this.pulse = 0;
     this.rotation = 0;
+    this.animTime      = Math.random() * 25;
+    this.frameIdx      = 0;
+    this._spriteCanvas  = null;
+    this._crossfadeCanvas = null;
   }
 
   get cx() { return this.x + this.w / 2; }
@@ -115,51 +267,96 @@ class Portal {
 
   activate() { this.active = true; }
 
+  _buildSpriteCanvas() {
+    const img = PortalSprite.img;
+    const oc  = document.createElement('canvas');
+    oc.width = img.naturalWidth; oc.height = img.naturalHeight;
+    const octx = oc.getContext('2d');
+    octx.drawImage(img, 0, 0);
+    const id = octx.getImageData(0, 0, oc.width, oc.height);
+    const d  = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114 < 40 && Math.max(d[i], d[i+1], d[i+2]) < 60)
+        d[i+3] = 0;
+    }
+    octx.putImageData(id, 0, 0);
+    return oc;
+  }
+
   update() {
-    this.pulse += 0.05;
-    if (this.active) this.rotation += 0.02;
+    this.pulse += 0.06;
+    this.rotation += 0.03;
+    this.animTime += 0.40;
+    this.frameIdx  = Math.floor(this.animTime) % PortalSprite.frames;
   }
 
   draw(ctx, camX, camY) {
     const sx = this.cx - camX, sy = this.cy - camY;
+
+    // sprite-based animation — same pattern as TeleportPortal
+    if (PortalSprite.isReady()) {
+      if (!this._spriteCanvas) this._spriteCanvas = this._buildSpriteCanvas();
+      const img   = this._spriteCanvas;
+      const COLS  = PortalSprite.cols, TOTAL = PortalSprite.frames;
+      const fw    = (img.width  / COLS) | 0;
+      const fh    = (img.height / PortalSprite.rows) | 0;
+      const dh    = 110, dw = (fw / fh) * dh;
+      const alpha = this.active ? 1 : 0.55;
+
+      const raw   = this.animTime % TOTAL;
+      const fA    = Math.floor(raw) % TOTAL;
+      const fB    = (fA + 1) % TOTAL;
+      const blend = raw - Math.floor(raw);
+
+      if (!this._crossfadeCanvas) {
+        this._crossfadeCanvas = document.createElement('canvas');
+        this._crossfadeCanvas.width  = fw;
+        this._crossfadeCanvas.height = fh;
+      }
+      const ofc    = this._crossfadeCanvas;
+      const ofctx  = ofc.getContext('2d');
+      ofctx.clearRect(0, 0, fw, fh);
+      ofctx.globalAlpha = 1;
+      ofctx.drawImage(img, (fA % COLS) * fw, Math.floor(fA / COLS) * fh, fw, fh, 0, 0, fw, fh);
+      if (blend > 0.01) {
+        ofctx.globalAlpha = blend;
+        ofctx.drawImage(img, (fB % COLS) * fw, Math.floor(fB / COLS) * fh, fw, fh, 0, 0, fw, fh);
+      }
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(ofc, 0, 0, fw, fh, sx - dw / 2, sy - dh / 2, dw, dh);
+      ctx.restore();
+      return;
+    }
+
+    // fallback: canvas-drawn
     const alpha = this.active ? 1 : 0.25;
     const scale = this.active ? 1 + Math.sin(this.pulse) * 0.08 : 1;
-
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(sx, sy);
     ctx.scale(scale, scale);
     ctx.rotate(this.rotation);
-
-    // outer ring
     const r = 30;
     const outerGrad = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r);
     outerGrad.addColorStop(0, this.active ? 'rgba(180,80,255,0.9)' : 'rgba(80,60,120,0.5)');
     outerGrad.addColorStop(1, 'rgba(80,0,160,0)');
     ctx.fillStyle = outerGrad;
-    ctx.beginPath();
-    ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    // inner glow
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
     const innerGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.5);
     innerGrad.addColorStop(0, this.active ? 'rgba(240,180,255,1)' : 'rgba(140,100,200,0.4)');
     innerGrad.addColorStop(1, 'rgba(160,60,255,0)');
     ctx.fillStyle = innerGrad;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
-    ctx.fill();
-
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2); ctx.fill();
     if (this.active) {
-      // swirl lines
       for (let i = 0; i < 8; i++) {
         const ang = (i / 8) * Math.PI * 2 + this.rotation * 3;
         ctx.strokeStyle = `rgba(220,160,255,${0.3 + Math.sin(this.pulse + i) * 0.2})`;
         ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(Math.cos(ang) * r * 0.8, Math.sin(ang) * r * 0.8);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(ang) * r * 0.8, Math.sin(ang) * r * 0.8); ctx.stroke();
       }
     }
     ctx.restore();
@@ -173,20 +370,44 @@ class Hazard {
 
   draw(ctx, camX, camY) {
     const sx = this.x - camX, sy = this.y - camY;
-    // spikes
     const count = Math.floor(this.w / 16);
     ctx.fillStyle = '#cc2244';
     for (let i = 0; i < count; i++) {
       const bx = sx + i * 16;
       ctx.beginPath();
-      ctx.moveTo(bx, sy + this.h);
-      ctx.lineTo(bx + 8, sy);
-      ctx.lineTo(bx + 16, sy + this.h);
+      if (this.flip) {
+        // потолочный шип — основание сверху, острие вниз
+        ctx.moveTo(bx,      sy);
+        ctx.lineTo(bx + 8,  sy + this.h);
+        ctx.lineTo(bx + 16, sy);
+      } else {
+        // напольный шип — основание снизу, острие вверх
+        ctx.moveTo(bx,      sy + this.h);
+        ctx.lineTo(bx + 8,  sy);
+        ctx.lineTo(bx + 16, sy + this.h);
+      }
       ctx.closePath();
       ctx.fill();
     }
   }
 }
+
+// Sprite sheet for Checkpoint: 6 cols × 6 rows = 36 frames (555 × 561 each).
+// Frame 0     : idle red (inactive) — single static frame
+// Frames 1–34 : activation transition (one-shot, 34 frames)
+// Frame 34    : idle yellow (active) — single static frame
+const CheckpointSprite = (() => {
+  const img = new Image();
+  let loaded = false, failed = false;
+  img.onload  = () => { loaded = true; };
+  img.onerror = () => { failed = true; };
+  img.src = 'sprites/checkpoint.png';
+  return {
+    img,
+    cols: 6, rows: 6, frames: 36,
+    isReady: () => loaded && !failed,
+  };
+})();
 
 class Checkpoint {
   constructor(x, y) {
@@ -194,26 +415,75 @@ class Checkpoint {
     this.w = 16; this.h = 40;
     this.activated = false;
     this.pulse = 0;
+    this.animTime = Math.random() * 6;   // desync idle loops between checkpoints
+    this.activationStep = 0;              // 0..23 during transition
+    this.frameIdx = 0;
   }
 
   get cx() { return this.x + this.w / 2; }
 
-  activate() { this.activated = true; }
+  activate() {
+    if (!this.activated) {
+      this.activated = true;
+      this.activationStep = 0;
+    }
+  }
 
-  update() { this.pulse += 0.06; }
+  update() {
+    this.pulse += 0.06;
+
+    if (!this.activated) {
+      // inactive — single idle frame
+      this.frameIdx = 0;
+      return;
+    }
+    if (this.activationStep < 34) {
+      // activation transition (frames 1..34) — one-shot, one sprite frame per game tick
+      this.activationStep++;
+      this.frameIdx = this.activationStep;  // 1..34
+      return;
+    }
+    // active — hold on the final activation frame
+    this.frameIdx = 34;
+  }
 
   draw(ctx, camX, camY) {
     const sx = this.x - camX, sy = this.y - camY;
+
+    if (CheckpointSprite.isReady()) {
+      const img = CheckpointSprite.img;
+      const fw = img.width  / CheckpointSprite.cols;
+      const fh = img.height / CheckpointSprite.rows;
+      const fx = (this.frameIdx % CheckpointSprite.cols) * fw;
+      const fy = Math.floor(this.frameIdx / CheckpointSprite.cols) * fh;
+
+      // sprite is ~square; draw bigger than collider, anchored at bottom-center
+      const drawW = 64;
+      const drawH = drawW * (fh / fw);  // ≈ 65 for square frame
+      const dx = sx + this.w / 2 - drawW / 2;
+      const dy = sy + this.h - drawH;
+
+      ctx.save();
+      if (this.drawAngle) {
+        ctx.translate(sx + this.w / 2, sy + this.h / 2);
+        ctx.rotate(this.drawAngle);
+        ctx.translate(-(sx + this.w / 2), -(sy + this.h / 2));
+      }
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, fx, fy, fw, fh, dx, dy, drawW, drawH);
+      ctx.restore();
+      return;
+    }
+
+    // Fallback vector flag (sprite still loading)
     ctx.save();
     if (this.drawAngle) {
       ctx.translate(sx + this.w / 2, sy + this.h / 2);
       ctx.rotate(this.drawAngle);
       ctx.translate(-(sx + this.w / 2), -(sy + this.h / 2));
     }
-    // pole
     ctx.fillStyle = '#443366';
     ctx.fillRect(sx + 6, sy, 4, this.h);
-    // flag
     const col = this.activated
       ? `hsl(${270 + Math.sin(this.pulse) * 20}, 80%, 65%)`
       : '#334';
@@ -556,21 +826,62 @@ class PulsingCurrentZone extends CurrentZone {
 }
 
 // Mini teleport portal — jumps player to a secret platform
+// Sprite sheet for TeleportPortal: 5 cols × 5 rows = 25 frames.
+const TeleportPortalSprite = (() => {
+  const img = new Image();
+  let loaded = false, failed = false;
+  img.onload  = () => { loaded = true; };
+  img.onerror = () => { failed = true; };
+  img.src = 'sprites/Portal 2.png';
+  return {
+    img,
+    cols: 5, rows: 5, frames: 25,
+    isReady: () => loaded && !failed,
+  };
+})();
+
 class TeleportPortal {
   constructor(x, y, destX, destY) {
     this.x = x; this.y = y;
     this.w = 48; this.h = 72;
     this.destX = destX; this.destY = destY;
     this.pulse = 0; this.rotation = 0; this.cooldown = 0;
+    this.animTime  = Math.random() * 25;
+    this.frameIdx  = 0;
+    this._spriteCanvas    = null;
+    this._crossfadeCanvas = null;
+    this.exitFlash = { timer: 0, maxTimer: 55, animTime: 0 };
   }
 
   get cx() { return this.x + this.w / 2; }
   get cy() { return this.y + this.h / 2; }
 
+  _buildSpriteCanvas() {
+    const img = TeleportPortalSprite.img;
+    const oc  = document.createElement('canvas');
+    oc.width = img.naturalWidth; oc.height = img.naturalHeight;
+    const octx = oc.getContext('2d');
+    octx.drawImage(img, 0, 0);
+    const id = octx.getImageData(0, 0, oc.width, oc.height);
+    const d  = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114 < 40 && Math.max(d[i], d[i+1], d[i+2]) < 60)
+        d[i+3] = 0;
+    }
+    octx.putImageData(id, 0, 0);
+    return oc;
+  }
+
   update() {
     this.pulse += 0.06;
     this.rotation += 0.03;
     if (this.cooldown > 0) this.cooldown--;
+    this.animTime += this.cooldown > 0 ? 0.10 : 0.40;
+    this.frameIdx  = Math.floor(this.animTime) % TeleportPortalSprite.frames;
+    if (this.exitFlash.timer > 0) {
+      this.exitFlash.timer--;
+      this.exitFlash.animTime += 0.40;
+    }
   }
 
   checkTeleport(player) {
@@ -581,6 +892,8 @@ class TeleportPortal {
       player.y = (typeof this.destY === 'function') ? this.destY() : this.destY;
       player.vx = 0; player.vy = 0;
       this.cooldown = 90;
+      this.exitFlash.timer    = this.exitFlash.maxTimer;
+      this.exitFlash.animTime = 0;
       for (let i = 0; i < 22; i++) {
         const a = Math.random() * Math.PI * 2, spd = 1 + Math.random() * 3;
         player.trailParticles.push({
@@ -595,6 +908,77 @@ class TeleportPortal {
   draw(ctx, camX, camY) {
     const sx = this.cx - camX, sy = this.cy - camY;
     const alpha = this.cooldown > 0 ? 0.30 : 1;
+
+    // sprite-based animation — same pattern as Bat
+    if (TeleportPortalSprite.isReady()) {
+      if (!this._spriteCanvas) this._spriteCanvas = this._buildSpriteCanvas();
+      const img = this._spriteCanvas;
+      const fw  = (img.width  / TeleportPortalSprite.cols) | 0;
+      const fh  = (img.height / TeleportPortalSprite.rows) | 0;
+      const dh  = 110;
+      const dw  = (fw / fh) * dh;
+
+      // основной портал — offscreen crossfade (постоянная яркость)
+      const COLS  = TeleportPortalSprite.cols;
+      const TOTAL = TeleportPortalSprite.frames;
+      const raw   = this.animTime % TOTAL;
+      const fA    = Math.floor(raw) % TOTAL;
+      const fB    = (fA + 1) % TOTAL;
+      const blend = raw - Math.floor(raw);
+
+      if (!this._crossfadeCanvas) {
+        this._crossfadeCanvas = document.createElement('canvas');
+        this._crossfadeCanvas.width  = fw;
+        this._crossfadeCanvas.height = fh;
+      }
+      const ofc   = this._crossfadeCanvas;
+      const ofctx = ofc.getContext('2d');
+      ofctx.clearRect(0, 0, fw, fh);
+      ofctx.globalAlpha = 1;
+      ofctx.drawImage(img, (fA % COLS) * fw, Math.floor(fA / COLS) * fh, fw, fh, 0, 0, fw, fh);
+      if (blend > 0.01) {
+        ofctx.globalAlpha = blend;
+        ofctx.drawImage(img, (fB % COLS) * fw, Math.floor(fB / COLS) * fh, fw, fh, 0, 0, fw, fh);
+      }
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(ofc, 0, 0, fw, fh, sx - dw / 2, sy - dh / 2, dw, dh);
+      ctx.restore();
+
+      // exit flash — временный портал в точке выхода
+      const ef = this.exitFlash;
+      if (ef.timer > 0) {
+        const t       = ef.timer / ef.maxTimer;
+        const efRaw   = ef.animTime % TOTAL;
+        const efA     = Math.floor(efRaw) % TOTAL;
+        const efB     = (efA + 1) % TOTAL;
+        const efBlend = efRaw - Math.floor(efRaw);
+        const destCx  = (typeof this.destX === 'function' ? this.destX() : this.destX) + 24;
+        const destCy  = (typeof this.destY === 'function' ? this.destY() : this.destY) + 36;
+        const esx     = destCx - camX;
+        const esy     = destCy - camY;
+
+        ofctx.clearRect(0, 0, fw, fh);
+        ofctx.globalAlpha = 1;
+        ofctx.drawImage(img, (efA % COLS) * fw, Math.floor(efA / COLS) * fh, fw, fh, 0, 0, fw, fh);
+        if (efBlend > 0.01) {
+          ofctx.globalAlpha = efBlend;
+          ofctx.drawImage(img, (efB % COLS) * fw, Math.floor(efB / COLS) * fh, fw, fh, 0, 0, fw, fh);
+        }
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        ctx.translate(esx, esy);
+        ctx.scale(t, t);
+        ctx.globalAlpha = t * 0.9;
+        ctx.drawImage(ofc, 0, 0, fw, fh, -dw / 2, -dh / 2, dw, dh);
+        ctx.restore();
+      }
+      return;
+    }
+
+    // fallback: canvas-drawn
     const sc = 1 + Math.sin(this.pulse) * 0.10;
     const r = 26;
     ctx.save();
@@ -714,6 +1098,20 @@ class FanZone {
   }
 }
 
+// Sprite sheet for Bat: 5 cols × 5 rows = 25 frames (640 × 506 each).
+const BatSprite = (() => {
+  const img = new Image();
+  let loaded = false, failed = false;
+  img.onload  = () => { loaded = true; };
+  img.onerror = () => { failed = true; };
+  img.src = 'sprites/bat.png';
+  return {
+    img,
+    cols: 5, rows: 5, frames: 25,
+    isReady: () => loaded && !failed,
+  };
+})();
+
 // ── Bat ──────────────────────────────────────────────────────
 // Perches on a platform. When the player approaches, takes flight
 // and slowly chases the player while steering around obstacles.
@@ -721,7 +1119,8 @@ class Bat {
   constructor(x, y, grounded = false) {
     this.perchX = x; this.perchY = y;
     this.x = x; this.y = y;
-    this.w = 33; this.h = 27;
+    // locked to sprite aspect (566/415 ≈ 1.364); width preserved from previous size
+    this.w = 113; this.h = 83;
     this.grounded = grounded;
     this.vx = 0; this.vy = 0;
     this.state = 'perched';
@@ -731,6 +1130,8 @@ class Bat {
     this.lastFlap = 0;
     this.facing = 1;
     this.bob = Math.random() * Math.PI * 2;
+    this.animTime = Math.random() * 25;
+    this.frameIdx = 0;
   }
 
   get cx() { return this.x + this.w / 2; }
@@ -755,14 +1156,17 @@ class Bat {
 
     if (this.state === 'perched') {
       if (this.grounded) {
-        // sitting on the ground — almost still, only minimal wing twitches
+        // sitting on the ground — nearly still
         this.flap += 0.05;
+        this.animTime += 0.05;
       } else {
         // hover in place — slow flap with gentle vertical bob
         this.flap += 0.18;
+        this.animTime += 0.20;
         this.y = this.perchY + Math.sin(this.bob) * 3;
         this._maybePlayFlap(dist, 0.45);
       }
+      this.frameIdx = Math.floor(this.animTime) % BatSprite.frames;
       if (dist < this.detectRange) {
         this.state = 'flying';
         this.vy = -0.5;
@@ -771,6 +1175,8 @@ class Bat {
     }
 
     this.flap += 0.42;
+    this.animTime += 0.55;
+    this.frameIdx = Math.floor(this.animTime) % BatSprite.frames;
     this._maybePlayFlap(dist, 1.0);
 
     // seek player with light steering
@@ -820,81 +1226,53 @@ class Bat {
   }
 
   draw(ctx, camX, camY) {
-    const sx = this.cx - camX;
-    const sy = this.cy - camY;
-    const flying = this.state === 'flying';
-    const flapPhase = flying ? Math.sin(this.flap) : Math.sin(this.flap) * 0.4;
-    const wingExt = flying ? 6 + flapPhase * 4 : 1.5 + flapPhase * 2;
-    const wingY = flapPhase * (flying ? 2.5 : 1.5);
+    const sx = this.x - camX;
+    const sy = this.y - camY;
 
+    // Sprite-based animation when sheet is ready.
+    if (BatSprite.isReady()) {
+      const img = BatSprite.img;
+      const fw = img.width  / BatSprite.cols;
+      const fh = img.height / BatSprite.rows;
+      const fx = (this.frameIdx % BatSprite.cols) * fw;
+      const fy = Math.floor(this.frameIdx / BatSprite.cols) * fh;
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      // mirror horizontally for left-facing bats
+      if (this.facing < 0) {
+        ctx.translate(sx + this.w, sy);
+        ctx.scale(-1, 1);
+        ctx.drawImage(img, fx, fy, fw, fh, 0, 0, this.w, this.h);
+      } else {
+        ctx.drawImage(img, fx, fy, fw, fh, sx, sy, this.w, this.h);
+      }
+      ctx.restore();
+      return;
+    }
+
+    // Fallback: simple silhouette while sprite is still loading.
     ctx.save();
-
-    // purple aura — makes the bat readable on dark backgrounds
-    const auraR = 27 + (flying ? Math.abs(flapPhase) * 5 : 0);
-    const aura = ctx.createRadialGradient(sx, sy, 0, sx, sy, auraR);
-    aura.addColorStop(0, 'rgba(180,120,255,0.35)');
-    aura.addColorStop(0.5, 'rgba(140,80,220,0.18)');
-    aura.addColorStop(1, 'rgba(120,60,200,0)');
-    ctx.fillStyle = aura;
-    ctx.beginPath();
-    ctx.arc(sx, sy, auraR, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.translate(sx, sy);
-    ctx.scale(this.facing * 1.5, 1.5);
-
-    // wings (drawn behind body) — dark grey with light outline
-    ctx.fillStyle = '#1a1a22';
-    ctx.strokeStyle = '#b090e0';
-    ctx.lineWidth = 1.2;
-    // left wing
-    ctx.beginPath();
-    ctx.moveTo(-2, -1);
-    ctx.lineTo(-9 - wingExt, -3 + wingY);
-    ctx.lineTo(-12 - wingExt, 1 + wingY);
-    ctx.lineTo(-9 - wingExt * 0.6, 2 + wingY * 0.5);
-    ctx.lineTo(-6 - wingExt * 0.4, 5 + wingY * 0.3);
-    ctx.lineTo(-2, 3);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    // right wing
-    ctx.beginPath();
-    ctx.moveTo(2, -1);
-    ctx.lineTo(9 + wingExt, -3 + wingY);
-    ctx.lineTo(12 + wingExt, 1 + wingY);
-    ctx.lineTo(9 + wingExt * 0.6, 2 + wingY * 0.5);
-    ctx.lineTo(6 + wingExt * 0.4, 5 + wingY * 0.3);
-    ctx.lineTo(2, 3);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // body
     ctx.fillStyle = '#15151c';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 6, 7, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-
-    // ears
-    ctx.beginPath();
-    ctx.moveTo(-4, -5); ctx.lineTo(-3, -10); ctx.lineTo(-1, -5);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(4, -5); ctx.lineTo(3, -10); ctx.lineTo(1, -5);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-
-    // eyes
-    ctx.fillStyle = '#ff4040';
-    ctx.shadowColor = '#ff2020';
-    ctx.shadowBlur = 6;
-    ctx.beginPath(); ctx.arc(-2.5, -1, 1.3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(2.5, -1, 1.3, 0, Math.PI * 2); ctx.fill();
-
+    ctx.fillRect(sx, sy, this.w, this.h);
     ctx.restore();
   }
 }
+
+// Sprite sheet for SpringJumper: 4 cols × 4 rows = 16 frames.
+// Frame 0 (top-left) is the idle pose; frames 1..15 play during a bounce.
+const SpringSprite = (() => {
+  const img = new Image();
+  let loaded = false, failed = false;
+  img.onload  = () => { loaded = true; };
+  img.onerror = () => { failed = true; };
+  img.src = 'sprites/spring.png';
+  return {
+    img,
+    cols: 4, rows: 4, frames: 16,
+    isReady: () => loaded && !failed,
+  };
+})();
 
 // ── SpringJumper ─────────────────────────────────────────────
 class SpringJumper {
@@ -902,11 +1280,13 @@ class SpringJumper {
     this.spawnX = x; this.spawnY = y;
     this.startX = x; this.startY = y;
     this.x = x; this.y = y;
-    this.w = 44; this.h = 28;
+    // sprite frame is 467 × 508; w=50 → h ≈ 50 * 508/467 ≈ 54
+    this.w = 50; this.h = 54;
     this.vx = 0; this.vy = 0;
     this.onGround = false;
     this.squish = 0;
     this.squishTimer = 0;
+    this.frameIdx = 0;     // sprite frame: 0 = idle, 1..15 = bounce
     this.LAUNCH = 26;
   }
 
@@ -953,8 +1333,11 @@ class SpringJumper {
       this.squishTimer--;
       const t = 1 - this.squishTimer / 18;
       this.squish = (t < 0.5 ? t * 2 : (1 - t) * 2) * 0.55;
+      // map 18 game frames → sprite frames 1..15
+      this.frameIdx = Math.min(15, Math.floor((18 - this.squishTimer) * 15 / 18) + 1);
     } else {
       this.squish = 0;
+      this.frameIdx = 0;  // idle
     }
   }
 
@@ -966,6 +1349,28 @@ class SpringJumper {
 
   draw(ctx, camX, camY) {
     const sx = this.x - camX, sy = this.y - camY;
+
+    // Sprite-based animation when the sheet is loaded.
+    if (SpringSprite.isReady()) {
+      const img = SpringSprite.img;
+      const fw = img.width  / SpringSprite.cols;
+      const fh = img.height / SpringSprite.rows;
+      const fx = (this.frameIdx % SpringSprite.cols) * fw;
+      const fy = Math.floor(this.frameIdx / SpringSprite.cols) * fh;
+
+      // sprite drawn at the collider's exact footprint (44 × 28)
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, fx, fy, fw, fh, sx, sy, this.w, this.h);
+      // ground shadow
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(sx + 2, sy + this.h + 1, this.w, 3);
+      ctx.restore();
+      return;
+    }
+
+    // Fallback vector drawing.
     const sh = this.h * (1 - this.squish * 0.55);
     const sw = this.w * (1 + this.squish * 0.3);
     const ox = (sw - this.w) / 2;
