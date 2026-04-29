@@ -367,7 +367,13 @@ class Player {
     oc.height = img.naturalHeight;
     const octx = oc.getContext('2d');
     octx.drawImage(img, 0, 0);
-    const id = octx.getImageData(0, 0, oc.width, oc.height);
+    let id;
+    try {
+      id = octx.getImageData(0, 0, oc.width, oc.height);
+    } catch (e) {
+      // canvas tainted (e.g. running via file:// origin) — fall back to raw image
+      return img;
+    }
     const d  = id.data;
     const IW = oc.width, IH = oc.height;
 
@@ -429,7 +435,13 @@ class Player {
     oc.height = img.naturalHeight;
     const octx = oc.getContext('2d');
     octx.drawImage(img, 0, 0);
-    const id = octx.getImageData(0, 0, oc.width, oc.height);
+    let id;
+    try {
+      id = octx.getImageData(0, 0, oc.width, oc.height);
+    } catch (e) {
+      // canvas tainted (e.g. running via file:// origin) — fall back to raw image
+      return img;
+    }
     const d  = id.data;
     for (let i = 0; i < d.length; i += 4) {
       if (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114 < 50 && Math.max(d[i], d[i+1], d[i+2]) < 70)
