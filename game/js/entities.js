@@ -326,32 +326,98 @@ class Hazard {
   }
 }
 
+// Sprite sheet for Checkpoint: 6 cols × 6 rows = 36 frames (555 × 561 each).
+// Frame 0     : idle red (inactive) — single static frame
+// Frames 1–34 : activation transition (one-shot, 34 frames)
+// Frame 34    : idle yellow (active) — single static frame
+const CheckpointSprite = (() => {
+  const img = new Image();
+  let loaded = false, failed = false;
+  img.onload  = () => { loaded = true; };
+  img.onerror = () => { failed = true; };
+  img.src = 'sprites/checkpoint.png';
+  return {
+    img,
+    cols: 6, rows: 6, frames: 36,
+    isReady: () => loaded && !failed,
+  };
+})();
+
 class Checkpoint {
   constructor(x, y) {
     this.x = x; this.y = y;
     this.w = 16; this.h = 40;
     this.activated = false;
     this.pulse = 0;
+    this.animTime = Math.random() * 6;   // desync idle loops between checkpoints
+    this.activationStep = 0;              // 0..23 during transition
+    this.frameIdx = 0;
   }
 
   get cx() { return this.x + this.w / 2; }
 
-  activate() { this.activated = true; }
+  activate() {
+    if (!this.activated) {
+      this.activated = true;
+      this.activationStep = 0;
+    }
+  }
 
-  update() { this.pulse += 0.06; }
+  update() {
+    this.pulse += 0.06;
+
+    if (!this.activated) {
+      // inactive — single idle frame
+      this.frameIdx = 0;
+      return;
+    }
+    if (this.activationStep < 34) {
+      // activation transition (frames 1..34) — one-shot, one sprite frame per game tick
+      this.activationStep++;
+      this.frameIdx = this.activationStep;  // 1..34
+      return;
+    }
+    // active — hold on the final activation frame
+    this.frameIdx = 34;
+  }
 
   draw(ctx, camX, camY) {
     const sx = this.x - camX, sy = this.y - camY;
+
+    if (CheckpointSprite.isReady()) {
+      const img = CheckpointSprite.img;
+      const fw = img.width  / CheckpointSprite.cols;
+      const fh = img.height / CheckpointSprite.rows;
+      const fx = (this.frameIdx % CheckpointSprite.cols) * fw;
+      const fy = Math.floor(this.frameIdx / CheckpointSprite.cols) * fh;
+
+      // sprite is ~square; draw bigger than collider, anchored at bottom-center
+      const drawW = 64;
+      const drawH = drawW * (fh / fw);  // ≈ 65 for square frame
+      const dx = sx + this.w / 2 - drawW / 2;
+      const dy = sy + this.h - drawH;
+
+      ctx.save();
+      if (this.drawAngle) {
+        ctx.translate(sx + this.w / 2, sy + this.h / 2);
+        ctx.rotate(this.drawAngle);
+        ctx.translate(-(sx + this.w / 2), -(sy + this.h / 2));
+      }
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, fx, fy, fw, fh, dx, dy, drawW, drawH);
+      ctx.restore();
+      return;
+    }
+
+    // Fallback vector flag (sprite still loading)
     ctx.save();
     if (this.drawAngle) {
       ctx.translate(sx + this.w / 2, sy + this.h / 2);
       ctx.rotate(this.drawAngle);
       ctx.translate(-(sx + this.w / 2), -(sy + this.h / 2));
     }
-    // pole
     ctx.fillStyle = '#443366';
     ctx.fillRect(sx + 6, sy, 4, this.h);
-    // flag
     const col = this.activated
       ? `hsl(${270 + Math.sin(this.pulse) * 20}, 80%, 65%)`
       : '#334';
