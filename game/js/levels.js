@@ -99,113 +99,238 @@ const L1 = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Level 2  "Водный сон"  — low gravity, slow & floaty
+// Level 2  "Водный сон"  — ocean inertia, global wave, 4 sections
 // ─────────────────────────────────────────────────────────────
 const L2 = {
   name: 'Водный сон',
   width: 2560, height: 720,
-  bgColors: ['#020818', '#040e1a', '#061428'],
-  playerStart: { x: 80, y: 580 },
+  bgColors: ['#010a1a', '#020e22', '#03122e'],
+  playerStart: { x: 80, y: 510 },
   deathY: 730,
+  isOcean: true,
+
+  // водная физика: максимальная инерция, слабый контроль
   physics: {
     gravity:   0.20,
     jumpForce: 9,
     djForce:   8,
-    moveSpeed: 3.0,
-    friction:  0.90,
+    moveSpeed: 2.0,
+    friction:  0.97,
   },
 
+  // глобальная волна: период ~150 кадров, сила ±0.45
+  oceanWave: { period: 150, strength: 0.45 },
+
+  // зона глубины: y > 570 (мировые координаты) — усиленная инерция
+  depthZone: { startY: 570, friction: 0.97 },
+
   platforms: [
-    new Platform(0,    660, 2560, 60, '#0a1830'),
-    new Platform(90,   540, 160, 18, '#102440'),
-    new Platform(290,  440, 140, 18, '#102440'),
-    new Platform(110,  340, 120, 18, '#102440'),
-    new Platform(320,  250, 140, 18, '#102440'),
-    new Platform(500,  350, 160, 18, '#102440'),
-    new Platform(680,  250, 140, 18, '#102440'),
-    new Platform(860,  170, 130, 18, '#102440'),
-    new Platform(1020, 270, 140, 18, '#102440'),
-    new Platform(1180, 370, 160, 18, '#102440'),
-    new Platform(1340, 270, 140, 18, '#102440'),
-    new Platform(1500, 180, 120, 18, '#102440'),
-    new Platform(1650, 290, 140, 18, '#102440'),
-    new Platform(1820, 400, 160, 18, '#102440'),
-    new Platform(2000, 310, 140, 18, '#102440'),
-    new Platform(2180, 430, 160, 18, '#102440'),
-    new Platform(2360, 530, 180, 18, '#102440'),
+    // ── дно (видимое)
+    new Platform(0, 690, 2560, 30, '#030f1e'),
+
+    // ── Секция 1 (x:0–620) — обучение, но уже уже
+    // y555 +185→y370  −175→y545  (точные прыжки с первых шагов)
+    new Platform(0,   555, 220, 18, '#0a2535'),   // старт
+    new Platform(368, 370, 82,  18, '#0c2d40'),   // +185 — точный одиночный
+    new Platform(558, 545, 82,  18, '#0a2535'),   // спуск
+
+    // ── Секция 2 (x:620–1260) — волна, вихрь, пределы одиночного
+    // y545 +125→y420  +195→y225  −220→y445  +200→y245
+    new Platform(668,  420, 80,  18, '#0c2d40'),
+    new Platform(848,  225, 76,  18, '#0d3550'),   // +195, почти максимум
+    new Platform(1008, 445, 80,  18, '#0a2535'),
+    new Platform(1172, 245, 76,  18, '#0d3550'),   // +200, на пределе
+
+    // ── Секция 3 (x:1260–1860) — двойной вихрь, вертикальный вызов
+    // y245 −225→y470  +195→y275  −230→y505  +337→y168 (двойной!)
+    new Platform(1298, 470, 82,  18, '#0a2535'),
+    new Platform(1462, 275, 76,  18, '#0d3550'),   // +195, точный одиночный
+    new Platform(1618, 505, 78,  18, '#0a2535'),
+    new Platform(1755, 168, 74,  18, '#0f3d60'),   // +337 — двойной прыжок с y505!
+
+    // ── Секция 4 (x:1860–2560) — глубина, щупальце, финал
+    // y168 −435→y603  −55→y658  +270→y388  +196→y192  −192→y384
+    new Platform(1838, 603, 82,  18, '#061828'),   // падение в глубину
+    new Platform(2005, 658, 100, 18, '#050f1c'),   // у дна — щупальце здесь
+    new Platform(2162, 388, 82,  18, '#0a2535'),   // двойной прыжок +270
+    new Platform(2352, 192, 130, 18, '#0d3550'),   // высоко — расширена
+    new Platform(2502, 384, 80,  18, '#0c2d40'),   // к порталу
   ],
 
   shards: [
-    new Shard(302, 410),   // easy — on 2nd platform
-    new Shard(872, 140),   // medium — near top of vertical climb
-    new Shard(1512, 150),  // hard — highest ceiling reach
+    new Shard(399,  344),   // S1 — центр платф.(368,370,82)
+    new Shard(1120, 310),   // S2 — в первом вихре (между сек.2 и сек.3)
+    new Shard(2078, 630),   // S3 — ближе к правому краю платф.(2005,658,100)
   ],
 
   hazards: [],
 
   checkpoints: [
-    new Checkpoint(1025, 232),
+    new Checkpoint(1331, 430),  // 1й — центр платф.(1298,470,82)
+    new Checkpoint(2195, 348),  // 2й — центр платф.(2162,388,82), до последней медузы
   ],
 
-  portal: new Portal(2374, 458),
+  portal: new Portal(2528, 312),
+
+  // ── Медузы (4 штуки — сложнее)
+  jellies: [
+    new Jellyfish(470,  315),   // сек.1 — перед высокой платформой
+    new Jellyfish(1025, 345),   // сек.2 — на спуске
+    new Jellyfish(1635, 400),   // сек.3 — у нижней перед двойным
+    new Jellyfish(2482, 155),   // сек.4 — правый край платф.(2352,192,130)
+  ],
+
+  // ── Стаи рыб
+  fishSchools: [
+    new FishSchool(775,  340, 200, 80),
+    new FishSchool(1390, 410, 240, 90),
+  ],
+
+  // ── Щупальце
+  tentacles: [
+    new Tentacle(2031, 692),
+  ],
+
+  // ── Два вихря
+  whirlpools: [
+    new Whirlpool(1120, 320, 108, 0.13),  // сек.2/3 — S2 внутри
+    new Whirlpool(1660, 410,  92, 0.12),  // сек.3 — второй вихрь, у нижней платф.
+  ],
+
+  // ── Вертикальные потоки (центр по платформам)
+  verticalCurrents: [
+    new VerticalCurrent(1462, 288, 68, 215, -0.50),  // ↑ центр платф.(1462,275,76)
+    new VerticalCurrent(1847, 445, 68, 238,  0.44),  // ↓ центр платф.(1838,603,82)
+  ],
+
+  // ── Пузыри
+  bubbles: [
+    new Bubble(686,  362),   // сек.2 — подъём к высокой
+    new Bubble(1852, 558),   // сек.4 — выход из глубины
+  ],
 };
 
 // ─────────────────────────────────────────────────────────────
-// Level 3  "Ломаный сон"  — disappearing platforms
+// Level 3  "Ломаный сон"  — forest / treetop branches (12800 wide)
+// Mix of BranchSpring and BranchStatic; monkey spawns every 1.6s.
+// Umbrella pickup pauses monkey for 2s.
 // ─────────────────────────────────────────────────────────────
 const L3 = {
   name: 'Ломаный сон',
-  width: 3200, height: 720,
-  bgColors: ['#0f0810', '#180d18', '#200a1c'],
-  playerStart: { x: 80, y: 580 },
+  width: 12800, height: 720,
+  bgColors: ['#020a02', '#030e03', '#051408'],
+  playerStart: { x: 60, y: 554 },
   deathY: 730,
   physics: {},
 
   platforms: [
-    new Platform(0,    660, 3200, 60, '#1a0a20'),
-    // solid rest spots
-    new Platform(0,    560, 180, 18, '#221030'),
-    new Platform(1080, 560, 200, 18, '#221030'),  // checkpoint island
-    new Platform(2160, 560, 180, 18, '#221030'),
-    new Platform(3040, 520, 180, 18, '#221030'),  // portal island
+    // solid safe zones (every ~2133px)
+    new Platform(    0, 590, 220, 18, '#3a1f08'),
+    new Platform( 2100, 560, 220, 18, '#3a1f08'),
+    new Platform( 4200, 560, 220, 18, '#3a1f08'),
+    new Platform( 6300, 560, 220, 18, '#3a1f08'),
+    new Platform( 8400, 560, 220, 18, '#3a1f08'),
+    new Platform(10500, 560, 220, 18, '#3a1f08'),
+    new Platform(12300, 500, 200, 18, '#3a1f08'),
 
-    // FadePlatforms: section 1 — before checkpoint
-    new FadePlatform(230,  500, 110, 18),
-    new FadePlatform(380,  430, 110, 18),
-    new FadePlatform(520,  360, 100, 18),
-    new FadePlatform(660,  430, 110, 18),
-    new FadePlatform(800,  350, 100, 18),
-    new FadePlatform(930,  280, 100, 18),
+    // S1 — mostly springs, introduce static (gaps 180–190px)
+    new BranchSpring( 242, 510, 108),
+    new BranchStatic( 430, 445, 102),
+    new BranchSpring( 622, 512, 100),
+    new BranchStatic( 812, 432,  98),
+    new BranchSpring(1002, 506, 102),
+    new BranchStatic(1194, 428,  98),
+    new BranchSpring(1386, 500, 100),
+    new BranchStatic(1578, 432,  96),
+    new BranchSpring(1770, 506, 100),
+    new BranchStatic(1962, 434,  96),
 
-    // FadePlatforms: section 2 — after checkpoint
-    new FadePlatform(1340, 490, 110, 18),
-    new FadePlatform(1490, 410, 110, 18),
-    new FadePlatform(1630, 330, 100, 18),
-    new FadePlatform(1760, 410, 110, 18),
-    new FadePlatform(1890, 330, 100, 18),
-    new FadePlatform(2020, 250, 100, 18),
+    // S2 — 50/50 mix (gaps 190–200px)
+    new BranchSpring(2332, 512, 105),
+    new BranchStatic(2528, 435, 100),
+    new BranchSpring(2728, 508, 100),
+    new BranchStatic(2928, 430,  98),
+    new BranchSpring(3128, 505, 102),
+    new BranchStatic(3330, 426,  98),
+    new BranchSpring(3530, 502, 100),
+    new BranchStatic(3732, 428,  96),
+    new BranchSpring(3932, 504, 100),
+    new BranchStatic(4134, 430,  95),
 
-    // FadePlatforms: section 3 — final stretch
-    new FadePlatform(2390, 490, 110, 18),
-    new FadePlatform(2540, 400, 100, 18),
-    new FadePlatform(2680, 320, 100, 18),
-    new FadePlatform(2820, 400, 110, 18),
-    new FadePlatform(2950, 480, 110, 18),
+    // S3 — more static, gaps 195–210px
+    new BranchStatic(4432, 512, 105),
+    new BranchSpring(4640, 432, 100),
+    new BranchStatic(4850, 508, 100),
+    new BranchSpring(5062, 428,  96),
+    new BranchStatic(5275, 505,  98),
+    new BranchSpring(5488, 424,  96),
+    new BranchStatic(5702, 500,  98),
+    new BranchSpring(5920, 422,  95),
+    new BranchStatic(6138, 498,  95),
+
+    // S4 — 70% static, gaps 200–220px
+    new BranchStatic(6542, 512, 105),
+    new BranchSpring(6758, 430, 100),
+    new BranchStatic(6978, 508,  98),
+    new BranchSpring(7200, 425,  96),
+    new BranchStatic(7424, 505,  98),
+    new BranchStatic(7648, 422,  95),
+    new BranchSpring(7876, 500,  96),
+    new BranchStatic(8108, 420,  95),
+    new BranchSpring(8338, 498,  94),
+
+    // S5 — 70% static, gaps 210–225px
+    new BranchStatic( 8642, 512, 105),
+    new BranchSpring( 8868, 428, 100),
+    new BranchStatic( 9098, 508,  98),
+    new BranchStatic( 9326, 422,  96),
+    new BranchSpring( 9558, 502,  98),
+    new BranchStatic( 9794, 418,  95),
+    new BranchStatic(10030, 498,  96),
+    new BranchSpring(10268, 420,  95),
+    new BranchStatic(10494, 496,  94),
+
+    // S6 — hardest: 80% static, gaps 220–240px
+    new BranchStatic(10742, 512, 102),
+    new BranchSpring(10978, 425,  98),
+    new BranchStatic(11218, 508,  96),
+    new BranchStatic(11462, 418,  95),
+    new BranchSpring(11710, 500,  96),
+    new BranchStatic(11960, 415,  94),
+    new BranchStatic(12200, 496,  93),
   ],
 
   shards: [
-    new Shard(392, 400),   // on fade platform — section 1
-    new Shard(942, 250),   // top of climb — section 1
-    new Shard(2032, 220),  // top of climb — section 2
+    new Shard( 3130, 462),  // S2 — above BranchSpring(3128,505)
+    new Shard( 6760, 386),  // S4 — above BranchSpring(6758,430) — high challenge
+    new Shard( 9560, 458),  // S5 — above BranchSpring(9558,502)
   ],
 
   hazards: [],
 
   checkpoints: [
-    new Checkpoint(1120, 522),
+    new Checkpoint( 2140, 522),
+    new Checkpoint( 4240, 522),
+    new Checkpoint( 6340, 522),
+    new Checkpoint( 8440, 522),
+    new Checkpoint(10540, 522),
   ],
 
-  portal: new Portal(3058, 448),
+  portal: new Portal(12348, 428),
+
+  umbrellas: [
+    new Umbrella( 1772, 468),   // S1 — above BranchSpring(1770,506)
+    new Umbrella( 3930, 460),   // S2 — above BranchSpring(3932,504)
+    new Umbrella( 6760, 387),   // S4 — near shard 2
+    new Umbrella( 9096, 465),   // S5 — above BranchStatic(9098,508)
+    new Umbrella(11208, 465),   // S6 — above BranchStatic(11218,508)
+  ],
+
+  monkeySpawner: (() => { const ms = new MonkeySpawner(); ms.cooldownMax = 96; return ms; })(),
+
+  forestBg: new ForestBackground(12800),
+
+  parrot: new Parrot([11600]),
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -412,9 +537,6 @@ const L6 = {
   hazards: [],
 
   // ── Вентиляторы ───────────────────────────────────────────────────────────
-  // Fan 1 (y=700-900): дует вправо — мешает держаться левой стены (около колонн A/B)
-  // Fan 2 (y=1500-1700): дует влево — мешает держаться правой стены (около колонн C/D)
-  // Fan 3 (y=2060-2240): дует вправо — в зоне колонн E/F/G (финальный участок)
   fans: [
     new FanZone(28, 700,  1224, 200,  1.0),
     new FanZone(28, 1500, 1224, 200, -1.0),

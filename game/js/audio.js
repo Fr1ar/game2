@@ -8,6 +8,11 @@ const SoundFX = (() => {
   let bgmTimers = [];
   let bgmCurrentLevel = -1;
 
+  // ===== intro cutscene state =====
+  let introMaster = null;
+  let introNodes  = [];
+  let introTimers = [];
+
   // ===== cutscene state =====
   let cutsceneMaster = null;
   let cutsceneNodes = [];
@@ -148,6 +153,34 @@ const SoundFX = (() => {
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     src.connect(bpf); bpf.connect(g); g.connect(sfxBus);
     src.start(t); src.stop(t + dur + 0.02);
+  }
+
+  function parrotLaugh() {
+    const ac = getCtx(); if (!ac) return;
+    const t = ac.currentTime;
+    // 4 squawky "ha" bursts descending in pitch
+    [0, 0.20, 0.38, 0.54].forEach((delay, i) => {
+      const freq = 520 - i * 55;
+      const o = ac.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(freq, t + delay);
+      o.frequency.exponentialRampToValueAtTime(freq * 0.48, t + delay + 0.17);
+      const bpf = ac.createBiquadFilter();
+      bpf.type = 'bandpass'; bpf.frequency.value = freq * 1.4; bpf.Q.value = 1.8;
+      const g = ac.createGain(); g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.25, t + delay + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.19);
+      o.connect(bpf); bpf.connect(g); g.connect(sfxBus);
+      o.start(t + delay); o.stop(t + delay + 0.22);
+    });
+    // trailing cackle glide
+    const og = ac.createOscillator(); og.type = 'sawtooth';
+    og.frequency.setValueAtTime(380, t + 0.72);
+    og.frequency.exponentialRampToValueAtTime(160, t + 1.1);
+    const gg = ac.createGain(); gg.gain.value = 0;
+    gg.gain.linearRampToValueAtTime(0.18, t + 0.74);
+    gg.gain.exponentialRampToValueAtTime(0.001, t + 1.15);
+    og.connect(gg); gg.connect(sfxBus);
+    og.start(t + 0.72); og.stop(t + 1.18);
   }
 
   function gravityFlip() {
@@ -358,6 +391,70 @@ const SoundFX = (() => {
 
   // ─────────── CUTSCENE MUSIC ───────────
 
+  // ─────────── INTRO CUTSCENE MUSIC ───────────
+
+  function startIntroMusic() {
+    if (introMaster) return;
+    const ac = getCtx(); if (!ac) return;
+    const now = ac.currentTime;
+
+    introMaster = ac.createGain();
+    introMaster.gain.value = 0;
+    introMaster.gain.linearRampToValueAtTime(0.45, now + 2.5);
+
+    const lpf = ac.createBiquadFilter();
+    lpf.type = 'lowpass'; lpf.frequency.value = 1200; lpf.Q.value = 0.6;
+    introMaster.connect(lpf); lpf.connect(cutsceneBus);
+
+    function oscI(freq, type, gain) {
+      const o = ac.createOscillator(); o.type = type; o.frequency.value = freq;
+      const g = ac.createGain(); g.gain.value = gain;
+      o.connect(g); g.connect(introMaster);
+      o.start(now); introNodes.push({ o });
+    }
+
+    oscI(55.00,  'sine',     0.13);
+    oscI(82.41,  'sine',     0.09);
+    oscI(110.00, 'sine',     0.06);
+    oscI(220.00, 'triangle', 0.04);
+
+    const lfo = ac.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.06;
+    const lfoG = ac.createGain(); lfoG.gain.value = 0.04;
+    lfo.connect(lfoG); lfoG.connect(introMaster.gain);
+    lfo.start(now); introNodes.push({ o: lfo });
+
+    const mbNotes = [440, 523.25, 659.25, 880, 659.25, 523.25];
+    let ni = 0;
+    introTimers.push(setInterval(() => {
+      if (!introMaster) return;
+      const t = ac.currentTime;
+      const o = ac.createOscillator(); o.type = 'triangle';
+      o.frequency.value = mbNotes[ni++ % mbNotes.length];
+      const g = ac.createGain(); g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.042, t + 0.025);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+      o.connect(g); g.connect(introMaster);
+      o.start(t); o.stop(t + 1.5);
+    }, 1500));
+  }
+
+  function stopIntroMusic() {
+    if (!introMaster || !ctx) return;
+    const ac = ctx;
+    const now = ac.currentTime;
+    introTimers.forEach(id => { clearInterval(id); clearTimeout(id); });
+    introTimers = [];
+    introMaster.gain.cancelScheduledValues(now);
+    introMaster.gain.setValueAtTime(introMaster.gain.value, now);
+    introMaster.gain.linearRampToValueAtTime(0, now + 0.8);
+    const mRef = introMaster; const nRef = introNodes;
+    introMaster = null; introNodes = [];
+    setTimeout(() => {
+      nRef.forEach(n => { try { n.o && n.o.stop(); } catch (e) {} });
+      try { mRef.disconnect(); } catch (e) {}
+    }, 1000);
+  }
+
   function startCutsceneMusic() {
     if (cutsceneMaster) return;
     const ac = getCtx(); if (!ac) return;
@@ -459,9 +556,11 @@ const SoundFX = (() => {
   return {
     // SFX
     jump, doubleJump, land, die, checkpoint, collectShard,
-    portalActive, portalEnter, gravityFlip, springBoing, batFlap,
+    portalActive, portalEnter, gravityFlip, springBoing, batFlap, parrotLaugh,
     // BGM
     playBGM, stopBGM,
+    // Intro cutscene
+    startIntroMusic, stopIntroMusic,
     // Cutscene
     startCutsceneMusic, stopCutsceneMusic,
     // Intro cutscene
