@@ -211,61 +211,126 @@ const L2 = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Level 3  "Ломаный сон"  — disappearing platforms
+// Level 3  "Ломаный сон"  — forest / treetop branches (12800 wide)
+// Mix of BranchSpring and BranchStatic; monkey spawns every 1.6s.
+// Umbrella pickup pauses monkey for 2s.
 // ─────────────────────────────────────────────────────────────
 const L3 = {
   name: 'Ломаный сон',
-  width: 3200, height: 720,
-  bgColors: ['#0f0810', '#180d18', '#200a1c'],
-  playerStart: { x: 80, y: 580 },
+  width: 12800, height: 720,
+  bgColors: ['#020a02', '#030e03', '#051408'],
+  playerStart: { x: 60, y: 554 },
   deathY: 730,
   physics: {},
 
   platforms: [
-    new Platform(0,    660, 3200, 60, '#1a0a20'),
-    // solid rest spots
-    new Platform(0,    560, 180, 18, '#221030'),
-    new Platform(1080, 560, 200, 18, '#221030'),  // checkpoint island
-    new Platform(2160, 560, 180, 18, '#221030'),
-    new Platform(3040, 520, 180, 18, '#221030'),  // portal island
+    // solid safe zones (every ~2133px)
+    new Platform(    0, 590, 220, 18, '#3a1f08'),
+    new Platform( 2100, 560, 220, 18, '#3a1f08'),
+    new Platform( 4200, 560, 220, 18, '#3a1f08'),
+    new Platform( 6300, 560, 220, 18, '#3a1f08'),
+    new Platform( 8400, 560, 220, 18, '#3a1f08'),
+    new Platform(10500, 560, 220, 18, '#3a1f08'),
+    new Platform(12300, 500, 200, 18, '#3a1f08'),
 
-    // FadePlatforms: section 1 — before checkpoint
-    new FadePlatform(230,  500, 110, 18),
-    new FadePlatform(380,  430, 110, 18),
-    new FadePlatform(520,  360, 100, 18),
-    new FadePlatform(660,  430, 110, 18),
-    new FadePlatform(800,  350, 100, 18),
-    new FadePlatform(930,  280, 100, 18),
+    // S1 — mostly springs, introduce static (gaps 180–190px)
+    new BranchSpring( 242, 510, 108),
+    new BranchStatic( 430, 445, 102),
+    new BranchSpring( 622, 512, 100),
+    new BranchStatic( 812, 432,  98),
+    new BranchSpring(1002, 506, 102),
+    new BranchStatic(1194, 428,  98),
+    new BranchSpring(1386, 500, 100),
+    new BranchStatic(1578, 432,  96),
+    new BranchSpring(1770, 506, 100),
+    new BranchStatic(1962, 434,  96),
 
-    // FadePlatforms: section 2 — after checkpoint
-    new FadePlatform(1340, 490, 110, 18),
-    new FadePlatform(1490, 410, 110, 18),
-    new FadePlatform(1630, 330, 100, 18),
-    new FadePlatform(1760, 410, 110, 18),
-    new FadePlatform(1890, 330, 100, 18),
-    new FadePlatform(2020, 250, 100, 18),
+    // S2 — 50/50 mix (gaps 190–200px)
+    new BranchSpring(2332, 512, 105),
+    new BranchStatic(2528, 435, 100),
+    new BranchSpring(2728, 508, 100),
+    new BranchStatic(2928, 430,  98),
+    new BranchSpring(3128, 505, 102),
+    new BranchStatic(3330, 426,  98),
+    new BranchSpring(3530, 502, 100),
+    new BranchStatic(3732, 428,  96),
+    new BranchSpring(3932, 504, 100),
+    new BranchStatic(4134, 430,  95),
 
-    // FadePlatforms: section 3 — final stretch
-    new FadePlatform(2390, 490, 110, 18),
-    new FadePlatform(2540, 400, 100, 18),
-    new FadePlatform(2680, 320, 100, 18),
-    new FadePlatform(2820, 400, 110, 18),
-    new FadePlatform(2950, 480, 110, 18),
+    // S3 — more static, gaps 195–210px
+    new BranchStatic(4432, 512, 105),
+    new BranchSpring(4640, 432, 100),
+    new BranchStatic(4850, 508, 100),
+    new BranchSpring(5062, 428,  96),
+    new BranchStatic(5275, 505,  98),
+    new BranchSpring(5488, 424,  96),
+    new BranchStatic(5702, 500,  98),
+    new BranchSpring(5920, 422,  95),
+    new BranchStatic(6138, 498,  95),
+
+    // S4 — 70% static, gaps 200–220px
+    new BranchStatic(6542, 512, 105),
+    new BranchSpring(6758, 430, 100),
+    new BranchStatic(6978, 508,  98),
+    new BranchSpring(7200, 425,  96),
+    new BranchStatic(7424, 505,  98),
+    new BranchStatic(7648, 422,  95),
+    new BranchSpring(7876, 500,  96),
+    new BranchStatic(8108, 420,  95),
+    new BranchSpring(8338, 498,  94),
+
+    // S5 — 70% static, gaps 210–225px
+    new BranchStatic( 8642, 512, 105),
+    new BranchSpring( 8868, 428, 100),
+    new BranchStatic( 9098, 508,  98),
+    new BranchStatic( 9326, 422,  96),
+    new BranchSpring( 9558, 502,  98),
+    new BranchStatic( 9794, 418,  95),
+    new BranchStatic(10030, 498,  96),
+    new BranchSpring(10268, 420,  95),
+    new BranchStatic(10494, 496,  94),
+
+    // S6 — hardest: 80% static, gaps 220–240px
+    new BranchStatic(10742, 512, 102),
+    new BranchSpring(10978, 425,  98),
+    new BranchStatic(11218, 508,  96),
+    new BranchStatic(11462, 418,  95),
+    new BranchSpring(11710, 500,  96),
+    new BranchStatic(11960, 415,  94),
+    new BranchStatic(12200, 496,  93),
   ],
 
   shards: [
-    new Shard(392, 400),   // on fade platform — section 1
-    new Shard(942, 250),   // top of climb — section 1
-    new Shard(2032, 220),  // top of climb — section 2
+    new Shard( 3130, 462),  // S2 — above BranchSpring(3128,505)
+    new Shard( 6760, 386),  // S4 — above BranchSpring(6758,430) — high challenge
+    new Shard( 9560, 458),  // S5 — above BranchSpring(9558,502)
   ],
 
   hazards: [],
 
   checkpoints: [
-    new Checkpoint(1120, 522),
+    new Checkpoint( 2140, 522),
+    new Checkpoint( 4240, 522),
+    new Checkpoint( 6340, 522),
+    new Checkpoint( 8440, 522),
+    new Checkpoint(10540, 522),
   ],
 
-  portal: new Portal(3058, 448),
+  portal: new Portal(12348, 428),
+
+  umbrellas: [
+    new Umbrella( 1772, 468),   // S1 — above BranchSpring(1770,506)
+    new Umbrella( 3930, 460),   // S2 — above BranchSpring(3932,504)
+    new Umbrella( 6760, 387),   // S4 — near shard 2
+    new Umbrella( 9096, 465),   // S5 — above BranchStatic(9098,508)
+    new Umbrella(11208, 465),   // S6 — above BranchStatic(11218,508)
+  ],
+
+  monkeySpawner: (() => { const ms = new MonkeySpawner(); ms.cooldownMax = 96; return ms; })(),
+
+  forestBg: new ForestBackground(12800),
+
+  parrot: new Parrot([11600]),
 };
 
 // ─────────────────────────────────────────────────────────────

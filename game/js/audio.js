@@ -155,6 +155,34 @@ const SoundFX = (() => {
     src.start(t); src.stop(t + dur + 0.02);
   }
 
+  function parrotLaugh() {
+    const ac = getCtx(); if (!ac) return;
+    const t = ac.currentTime;
+    // 4 squawky "ha" bursts descending in pitch
+    [0, 0.20, 0.38, 0.54].forEach((delay, i) => {
+      const freq = 520 - i * 55;
+      const o = ac.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(freq, t + delay);
+      o.frequency.exponentialRampToValueAtTime(freq * 0.48, t + delay + 0.17);
+      const bpf = ac.createBiquadFilter();
+      bpf.type = 'bandpass'; bpf.frequency.value = freq * 1.4; bpf.Q.value = 1.8;
+      const g = ac.createGain(); g.gain.value = 0;
+      g.gain.linearRampToValueAtTime(0.25, t + delay + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.19);
+      o.connect(bpf); bpf.connect(g); g.connect(sfxBus);
+      o.start(t + delay); o.stop(t + delay + 0.22);
+    });
+    // trailing cackle glide
+    const og = ac.createOscillator(); og.type = 'sawtooth';
+    og.frequency.setValueAtTime(380, t + 0.72);
+    og.frequency.exponentialRampToValueAtTime(160, t + 1.1);
+    const gg = ac.createGain(); gg.gain.value = 0;
+    gg.gain.linearRampToValueAtTime(0.18, t + 0.74);
+    gg.gain.exponentialRampToValueAtTime(0.001, t + 1.15);
+    og.connect(gg); gg.connect(sfxBus);
+    og.start(t + 0.72); og.stop(t + 1.18);
+  }
+
   function gravityFlip() {
     const ac = getCtx(); if (!ac) return;
     const t = ac.currentTime;
@@ -528,7 +556,7 @@ const SoundFX = (() => {
   return {
     // SFX
     jump, doubleJump, land, die, checkpoint, collectShard,
-    portalActive, portalEnter, gravityFlip, springBoing, batFlap,
+    portalActive, portalEnter, gravityFlip, springBoing, batFlap, parrotLaugh,
     // BGM
     playBGM, stopBGM,
     // Intro cutscene

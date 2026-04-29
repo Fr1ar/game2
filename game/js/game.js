@@ -259,6 +259,8 @@ function drawBackground() {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
+  if (level.forestBg) { level.forestBg.update(); level.forestBg.draw(ctx, cam.x, W, H); }
+
   for (let i = 0; i < 3; i++) {
     const bx = ((i * 1200 - cam.x * 0.18 + bgTime * 8) % (W + 500) + W + 500) % (W + 500) - 250;
     const by = 80 + i * 200;
@@ -364,6 +366,16 @@ function update() {
         b.x = b.perchX; b.y = b.perchY; b.vx = 0; b.vy = 0;
         b.state = 'perched'; b.facing = 1;
       });
+      level.platforms.forEach(p => {
+        if (p instanceof BranchSpring)  { p.state='idle'; p.bendAmt=0; p.y=p.baseY; p.slippery=false; p.slipDir=0; p.dripTimer=0; }
+        if (p instanceof BranchStatic)  { p.slippery=false; p.slipDir=0; p._dripTimer=0; }
+        if (p instanceof BranchBreak)   { p.state='solid'; p.crackTimer=0; p.fallVy=0; p.y=p.baseY; p.angle=0; p.active=true; p.slippery=false; }
+        if (p instanceof BranchHybrid)  { p.state='idle'; p.timer=0; p.bendAmt=0; p.y=p.baseY; p.fallVy=0; p.angle=0; p.active=true; p.bounced=false; p.slippery=false; }
+      });
+      if (level.monkeySpawner) level.monkeySpawner.reset();
+      if (level.parrot) level.parrot.reset();
+      player.controlLoss = 0;
+      player.umbrellaTimer = 0;
       state = State.PLAYING;
     }
     Input.flush();
@@ -400,6 +412,9 @@ function update() {
   level.platforms.forEach(p => {
     if (p instanceof FadePlatform) p.update();
     if (p instanceof FloatingPlatform) p.update();
+    if (p instanceof BranchSpring)  p.update(player);
+    if (p instanceof BranchBreak)   p.update(level.deathY);
+    if (p instanceof BranchHybrid)  p.update(player, level.deathY);
   });
 
   // update entities
@@ -464,6 +479,39 @@ function update() {
     level.bats.forEach(b => {
       b.update(player, level.platforms);
       if (!player.dead && b.overlapsPlayer(player)) player.die();
+    });
+  }
+
+  // umbrella boost update
+  if ((player.umbrellaTimer || 0) > 0) player.umbrellaTimer--;
+  if (level.umbrellas) {
+    level.umbrellas.forEach(u => {
+      u.update();
+      if (u.checkCollect(player)) player.umbrellaTimer = 180;
+    });
+  }
+
+  // parrot — spawn trigger + update
+  if (level.parrot) {
+    level.parrot.trySpawn(player, cam.x, cam.y);
+    if (level.parrot.active) level.parrot.update(player, level.platforms, cam.y);
+  }
+
+  // monkey spawner — paused during umbrella boost OR active parrot
+  if (level.monkeySpawner && !(player.umbrellaTimer > 0) && !level.parrot?.active) {
+    level.monkeySpawner.update(player, level.platforms);
+  }
+
+  // controlLoss decay
+  if ((player.controlLoss || 0) > 0) { player.controlLoss--; player.vx *= 0.88; }
+
+  // slippery branch sliding — player drifts in slipDir
+  if (player.onGround) {
+    level.platforms.forEach(p => {
+      if (p.slippery && player.x + player.w > p.x && player.x < p.x + p.w &&
+          Math.abs(p.y - (player.y + player.h)) < 6) {
+        player.vx += (p.slipDir || 1) * 0.27;
+      }
     });
   }
 
@@ -560,8 +608,43 @@ function draw() {
   if (level.teleportPortals) level.teleportPortals.forEach(tp => tp.draw(ctx, cam.x, cam.y));
   if (level.spring) level.spring.draw(ctx, cam.x, cam.y);
   if (level.bats) level.bats.forEach(b => b.draw(ctx, cam.x, cam.y));
+  if (level.umbrellas) level.umbrellas.forEach(u => u.draw(ctx, cam.x, cam.y));
+  if (level.monkeySpawner) level.monkeySpawner.draw(ctx, cam.x, cam.y);
+  if (level.parrot) level.parrot.draw(ctx, cam.x, cam.y);
   if (chaser) chaser.draw(ctx, cam.x, cam.y);
   player.draw(ctx, cam.x, cam.y);
+
+  // umbrella boost HUD — floats above player
+  if ((player.umbrellaTimer || 0) > 0) {
+    const px  = Math.round(player.x + player.w * 0.5 - cam.x);
+    const py  = Math.round(player.y - cam.y);
+    const prog = player.umbrellaTimer / 180;
+    ctx.save();
+    // icon
+    const ux = px, uy = py - 44;
+    ctx.shadowColor = '#88ccff'; ctx.shadowBlur = 10;
+    ctx.fillStyle = '#3388dd';
+    ctx.beginPath(); ctx.moveTo(ux - 11, uy); ctx.arc(ux, uy, 11, Math.PI, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2266bb';
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI + (i + 0.5) * (Math.PI / 4);
+      ctx.beginPath(); ctx.arc(ux + Math.cos(a) * 9, uy + Math.sin(a) * 2, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#a06820'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(ux, uy); ctx.lineTo(ux, uy + 12); ctx.stroke();
+    ctx.beginPath(); ctx.arc(ux - 3, uy + 12, 2.5, 0, Math.PI); ctx.stroke();
+    ctx.lineCap = 'butt';
+    // progress bar
+    const bw = 38, bh = 4;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(px - bw * 0.5, py - 24, bw, bh);
+    const bg = ctx.createLinearGradient(px - bw * 0.5, 0, px + bw * 0.5, 0);
+    bg.addColorStop(0, '#44aaff'); bg.addColorStop(1, '#88ddff');
+    ctx.fillStyle = bg;
+    ctx.fillRect(px - bw * 0.5, py - 24, bw * prog, bh);
+    ctx.restore();
+  }
 
   // tentacle screen warning — поверх всего, перед UI
   if (level.tentacles) level.tentacles.forEach(t => t.drawWarning(ctx, W, H, cam.x, cam.y));
