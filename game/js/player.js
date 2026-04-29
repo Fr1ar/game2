@@ -1,3 +1,12 @@
+const DeathSprite = (() => {
+  const img = new Image();
+  let loaded = false, failed = false;
+  img.onload  = () => { loaded = true; };
+  img.onerror = () => { failed = true; };
+  img.src = 'sprites/death.png';
+  return { img, cols: 4, rows: 4, frames: 16, isReady: () => loaded && !failed };
+})();
+
 const DEFAULT_PHYSICS = {
   gravity:   0.55,
   jumpForce: 13,
@@ -33,6 +42,9 @@ class Player {
     this.animTimer = 0;
     this.dead = false;
     this.deathTimer = 0;
+    this.deathAnimActive = false;
+    this.deathAnimTime   = 0;
+    this._deathCanvas    = null;
     this.trailParticles = [];
     this.gravityDir = 1;
     this.gravityAxis = 'y';
@@ -54,6 +66,15 @@ class Player {
 
   update(platforms, hazards) {
     if (this.dead) { this.deathTimer++; return; }
+    if (this.deathAnimActive) {
+      this.deathAnimTime += 0.35;
+      if (this.deathAnimTime >= DeathSprite.frames) {
+        this.deathAnimActive = false;
+        this.dead = true;
+        this.deathTimer = 0;
+      }
+      return;
+    }
     if (this.gravityAxis === 'x') { this._updateHorizontal(platforms, hazards); return; }
 
     const ph = this.physics;
@@ -113,8 +134,6 @@ class Player {
     this.onGround = false;
     this.y += this.vy;
     this._resolveY(platforms);
-    if (!wasOnGround && this.onGround) SoundFX.land();
-
     // --- hazards ---
     for (const h of hazards) {
       if (this._overlaps(h)) { this.die(); return; }
@@ -132,9 +151,10 @@ class Player {
   }
 
   die() {
-    if (this.dead) return;
-    this.dead = true;
-    this.deathTimer = 0;
+    if (this.dead || this.deathAnimActive) return;
+    this.deathAnimActive = true;
+    this.deathAnimTime   = 0;
+    this._deathCanvas    = null;
     SoundFX.die();
   }
 
@@ -181,8 +201,6 @@ class Player {
     this.onGround = false;
     this.x += this.vx;
     this._resolveX_land(platforms);
-    if (!wasOnGround && this.onGround) SoundFX.land();
-
     // hazards
     for (const h of hazards) { if (this._overlaps(h)) { this.die(); return; } }
 
@@ -288,6 +306,37 @@ class Player {
 
     const sx = Math.round(this.x - camX);
     const sy = Math.round(this.y - camY);
+
+    if (this.deathAnimActive && DeathSprite.isReady()) {
+      if (!this._deathCanvas) {
+        const src = DeathSprite.img;
+        const oc  = document.createElement('canvas');
+        oc.width  = src.naturalWidth; oc.height = src.naturalHeight;
+        const octx = oc.getContext('2d');
+        octx.drawImage(src, 0, 0);
+        const id = octx.getImageData(0, 0, oc.width, oc.height);
+        const d  = id.data;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114 < 40 && Math.max(d[i], d[i+1], d[i+2]) < 60)
+            d[i+3] = 0;
+        }
+        octx.putImageData(id, 0, 0);
+        this._deathCanvas = oc;
+      }
+      const dc   = this._deathCanvas;
+      const COLS = DeathSprite.cols;
+      const fw   = (dc.width  / COLS) | 0;
+      const fh   = (dc.height / DeathSprite.rows) | 0;
+      const f    = Math.min(Math.floor(this.deathAnimTime), DeathSprite.frames - 1);
+      const fx   = (f % COLS) * fw;
+      const fy   = Math.floor(f / COLS) * fh;
+      const dw   = 80, dh = 80;
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(dc, fx, fy, fw, fh, sx + this.w / 2 - dw / 2, sy + this.h / 2 - dh / 2, dw, dh);
+      ctx.restore();
+      return;
+    }
 
     if (this.endAnimActive) {
       this._drawEndAnim(ctx, sx, sy, camX, camY);

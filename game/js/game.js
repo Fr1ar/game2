@@ -14,7 +14,37 @@ resize();
 
 const ctx = canvas.getContext('2d');
 
-const State = { INTRO: 0, PLAYING: 1, DEAD: 2, LEVEL_COMPLETE: 3, WIN: 4, CUTSCENE: 5, INTRO_CUTSCENE: 6 };
+const State = { INTRO: 0, PLAYING: 1, DEAD: 2, LEVEL_COMPLETE: 3, WIN: 4, CUTSCENE: 5, INTRO_CUTSCENE: 6, LOADING: 7 };
+
+// ── Asset preloading ─────────────────────────────────────────
+// Player sprites — created here so they're tracked by the preloader.
+window._ghostImg = new Image();
+window._ghostImg.src = 'sprites/sprite-max-px-16 (1).png';
+window._ghostEndImg = new Image();
+window._ghostEndImg.src = 'sprites/sprite-max-end.png';
+
+// Other sprites are created by their entity modules' module-level IIFEs
+// (PortalSprite, CheckpointSprite, etc.) — by the time game.js runs
+// they already exist and are loading.
+const ASSETS = [
+  PortalSprite.img,
+  CheckpointSprite.img,
+  TeleportPortalSprite.img,
+  BatSprite.img,
+  SpringSprite.img,
+  window._ghostImg,
+  window._ghostEndImg,
+];
+
+function assetsProgress() {
+  let done = 0;
+  for (const img of ASSETS) {
+    // count both successful and failed loads — either way the request settled
+    if (img.complete) done++;
+  }
+  return done / ASSETS.length;
+}
+function assetsReady() { return assetsProgress() >= 1; }
 
 let state, levelIndex, level, player, chaser,
     checkpointX, checkpointY,
@@ -178,19 +208,12 @@ function loadLevel(idx) {
   player = new Player(level.playerStart.x, level.playerStart.y);
   player.setPhysics(level.physics || {});
 
-  // ghost sprite for all levels
-  if (!window._ghostImg) {
-    window._ghostImg = new Image();
-    window._ghostImg.src = 'sprites/sprite-max-px-16 (1).png';
-  }
+  // ghost sprites — already preloaded at module init
   player.ghostSprite  = window._ghostImg;
   player._ghostCanvas = null;
+  player.endSprite    = window._ghostEndImg;
 
-  if (!window._ghostEndImg) {
-    window._ghostEndImg = new Image();
-    window._ghostEndImg.src = 'sprites/sprite-max-end.png';
-  }
-  player.endSprite       = window._ghostEndImg;
+
   player.endAnimActive   = false;
   player.endAnimDone     = false;
   player.endAnimFrame    = 0;
@@ -321,6 +344,12 @@ function overlaps(a, b) {
 // --- Update ---
 function update() {
   bgTime += 0.003;
+
+  if (state === State.LOADING) {
+    if (assetsReady()) state = State.INTRO;
+    Input.flush();
+    return;
+  }
 
   // level skip: digits 1-9 jump to that level if it exists
   for (let i = 0; i < 9; i++) {
@@ -662,6 +691,7 @@ function update() {
 function draw() {
   ctx.clearRect(0, 0, W, H);
 
+  if (state === State.LOADING) { drawLoadingScreen(); return; }
   if (state === State.INTRO) { drawIntroScreen(); return; }
   if (state === State.INTRO_CUTSCENE) { drawIntroCutscene(); return; }
   if (state === State.CUTSCENE) { drawCutscene(); return; }
@@ -1570,6 +1600,55 @@ function drawIntroCutscene() {
   }
 }
 
+function drawLoadingScreen() {
+  ctx.fillStyle = '#04020e';
+  ctx.fillRect(0, 0, W, H);
+
+  const t = Date.now() / 1000;
+  const p = assetsProgress();
+
+  // title
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#e8d0ff';
+  ctx.font = 'bold 36px sans-serif';
+  ctx.shadowColor = '#9050ff';
+  ctx.shadowBlur = 22;
+  ctx.fillText('Загрузка...', W / 2, H / 2 - 40);
+
+  // progress bar
+  const barW = 360, barH = 14;
+  const barX = (W - barW) / 2, barY = H / 2 + 10;
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(80,60,120,0.45)';
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.fillStyle = '#a070ff';
+  ctx.fillRect(barX, barY, Math.floor(barW * p), barH);
+  ctx.strokeStyle = '#5a4888';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(barX, barY, barW, barH);
+
+  // percentage
+  ctx.fillStyle = '#9080c0';
+  ctx.font = '14px sans-serif';
+  ctx.fillText(`${Math.floor(p * 100)}%`, W / 2, barY + barH + 22);
+  ctx.restore();
+
+  // pulsing dust particles
+  for (let i = 0; i < 18; i++) {
+    const px = (i * 137.5) % W;
+    const py = ((i * 89 + t * 12 * (0.4 + (i % 5) * 0.15)) % H);
+    ctx.save();
+    ctx.globalAlpha = 0.18 + Math.sin(t + i) * 0.10;
+    ctx.fillStyle = '#c0a0ff';
+    ctx.beginPath();
+    ctx.arc(px, py, 1 + (i % 3) * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function drawIntroScreen() {
   ctx.fillStyle = '#04020e';
   ctx.fillRect(0, 0, W, H);
@@ -1631,5 +1710,5 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
-state = State.INTRO;
+state = State.LOADING;
 requestAnimationFrame(loop);
