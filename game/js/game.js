@@ -238,7 +238,7 @@ function loadLevel(idx) {
   controlsTimer = 320;
   messageTimer = 0;
   gravityFlipCooldown = 0;
-  gravHint       = !!level.gravityToggle;
+  gravHint       = !!level.gravityToggle && !level.gravHintOnShard;
   djHint         = !!level.djHint;
   prevCanDJ      = false;
   chaserAwaitMove = !!level.chaser;
@@ -589,6 +589,7 @@ function update() {
       s.collect();
       SoundFX.collectShard();
       shardsCollected++;
+      if (level.gravHintOnShard && shardsCollected === 1) gravHint = true;
       if (shardsCollected >= level.shards.length) {
         level.portal.activate();
         SoundFX.portalActive();

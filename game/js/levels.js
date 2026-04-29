@@ -225,6 +225,7 @@ const L3 = {
   physics: {},
   djHint: true,
   gravityToggle: true,
+  gravHintOnShard: true,   // gravHint появляется только после первого осколка
 
   platforms: [
     // ── Потолок — прерывистый, ~половина уровня (провалы = смерть при инверсии)
