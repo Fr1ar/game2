@@ -696,69 +696,161 @@ function draw() {
 }
 
 function drawGravityIndicator() {
-  const inv = player.gravityDir < 0;  // true = тянет к потолку
-  const t   = Date.now() / 350;
-  const pulse = 0.6 + Math.sin(t) * 0.4;
+  const inv   = player.gravityDir < 0;
+  const t     = Date.now() / 300;
+  const pulse = 0.55 + Math.sin(t) * 0.45;
 
-  // размеры панели
-  const PW = 118, PH = 72;
-  const px = W - PW - 14, py = H - PH - 14;
+  const PW = 80, PH = 94;
+  const px = W - PW - 16, py = H - PH - 16;
+  const cx = px + PW / 2;
+  const SURF = 10;  // высота полосок платформ
 
   ctx.save();
 
-  // ── фон панели ────────────────────────────────────────────────────────────
-  ctx.globalAlpha = 0.72;
-  ctx.fillStyle = '#0a0618';
+  // ── фон ──────────────────────────────────────────────────────────────────
+  ctx.globalAlpha = 0.84;
+  ctx.fillStyle = '#050210';
   ctx.beginPath();
   ctx.roundRect(px, py, PW, PH, 10);
   ctx.fill();
 
-  ctx.globalAlpha = 0.45;
-  ctx.strokeStyle = inv ? '#aa60ff' : '#5070ff';
-  ctx.lineWidth = 1.5;
+  // рамка пульсирует цветом активной поверхности
+  ctx.globalAlpha = 0.35 + pulse * 0.30;
+  ctx.strokeStyle = inv ? '#9040e0' : '#2860d8';
+  ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.roundRect(px, py, PW, PH, 10);
   ctx.stroke();
 
-  // ── кнопка ↑  (к потолку / инверсия) ─────────────────────────────────────
-  const upActive = inv;
-  ctx.globalAlpha = upActive ? (0.85 + Math.sin(t) * 0.15) : 0.28;
-  ctx.fillStyle = upActive ? '#9040e8' : '#2a2040';
-  ctx.beginPath();
-  ctx.roundRect(px + 6, py + 6, PW - 12, 26, 6);
-  ctx.fill();
+  const SX = px + 7, SW = PW - 14;  // X и ширина полосок
 
-  ctx.globalAlpha = upActive ? 1 : 0.35;
+  // ── ПОТОЛОК ───────────────────────────────────────────────────────────────
+  const ceilY = py + 7;
+
+  // свечение вниз от потолка (когда активен)
+  if (inv) {
+    const cg = ctx.createLinearGradient(cx, ceilY + SURF, cx, ceilY + SURF + 44);
+    cg.addColorStop(0, `rgba(160,60,255,${0.45 * pulse})`);
+    cg.addColorStop(1, 'rgba(160,60,255,0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = cg;
+    ctx.fillRect(SX, ceilY + SURF, SW, 44);
+  }
+  // полоска
+  ctx.globalAlpha = inv ? 0.95 : 0.22;
+  ctx.fillStyle   = inv ? '#7828cc' : '#1a1230';
+  ctx.fillRect(SX, ceilY, SW, SURF);
+  // вертикальные тайловые черточки
+  ctx.globalAlpha = inv ? 0.28 : 0.07;
   ctx.fillStyle = '#fff';
-  ctx.font = `bold ${upActive ? 13 : 12}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('↑  W / ↑  →  потолок', px + PW / 2, py + 19);
+  for (let i = 0; i < 4; i++) ctx.fillRect(SX + 5 + i * 16, ceilY, 1, SURF);
+  // яркая грань — нижний край (поверхность приземления)
+  ctx.globalAlpha = inv ? (0.6 + pulse * 0.4) : 0.10;
+  ctx.fillStyle   = inv ? '#dda0ff' : '#332244';
+  ctx.fillRect(SX, ceilY + SURF - 2, SW, 2);
 
-  // ── кнопка ↓  (к полу / обычная) ─────────────────────────────────────────
-  const dnActive = !inv;
-  ctx.globalAlpha = dnActive ? (0.85 + Math.sin(t) * 0.15) : 0.28;
-  ctx.fillStyle = dnActive ? '#3060d0' : '#1a2040';
-  ctx.beginPath();
-  ctx.roundRect(px + 6, py + PH - 32, PW - 12, 26, 6);
-  ctx.fill();
+  // ── ПОЛ ───────────────────────────────────────────────────────────────────
+  const floorY = py + PH - 7 - SURF;
 
-  ctx.globalAlpha = dnActive ? 1 : 0.35;
+  // свечение вверх от пола (когда активен)
+  if (!inv) {
+    const fg = ctx.createLinearGradient(cx, floorY - 44, cx, floorY);
+    fg.addColorStop(0, 'rgba(30,90,220,0)');
+    fg.addColorStop(1, `rgba(30,90,220,${0.45 * pulse})`);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = fg;
+    ctx.fillRect(SX, floorY - 44, SW, 44);
+  }
+  // полоска
+  ctx.globalAlpha = !inv ? 0.95 : 0.22;
+  ctx.fillStyle   = !inv ? '#2050b8' : '#0c1228';
+  ctx.fillRect(SX, floorY, SW, SURF);
+  // тайловые черточки
+  ctx.globalAlpha = !inv ? 0.28 : 0.07;
   ctx.fillStyle = '#fff';
-  ctx.font = `bold ${dnActive ? 13 : 12}px sans-serif`;
-  ctx.fillText('↓  S / ↓  →  пол', px + PW / 2, py + PH - 19);
+  for (let i = 0; i < 4; i++) ctx.fillRect(SX + 5 + i * 16, floorY, 1, SURF);
+  // яркая грань — верхний край
+  ctx.globalAlpha = !inv ? (0.6 + pulse * 0.4) : 0.10;
+  ctx.fillStyle   = !inv ? '#80b8ff' : '#182238';
+  ctx.fillRect(SX, floorY, SW, 2);
 
-  // ── пульсирующая стрелка активного направления ────────────────────────────
-  const arrowX = px + PW - 18;
-  const arrowY = inv ? py + 19 : py + PH - 19;
-  ctx.globalAlpha = 0.9 * pulse;
-  ctx.fillStyle = inv ? '#d090ff' : '#80aaff';
-  ctx.font = 'bold 16px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(inv ? '↑' : '↓', arrowX, arrowY);
+  // ── ЧАСТИЦЫ ГРАВИТАЦИИ (падают к активной поверхности) ────────────────────
+  const midTop = ceilY + SURF + 2;
+  const midBot = floorY - 2;
+  const span   = midBot - midTop;
+  ctx.fillStyle = inv ? '#c080ff' : '#6090ff';
+  for (let i = 0; i < 4; i++) {
+    const phase  = ((t * 0.65 + i * 0.72) % 1);
+    const frac   = inv ? (1 - phase) : phase;
+    const dotY   = midTop + frac * span;
+    const dotX   = SX + 6 + (i * 16) % (SW - 12);
+    const alpha  = Math.sin(phase * Math.PI) * 0.60;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ── МИНИ-ПЕРСОНАЖ (стоит на активной поверхности) ─────────────────────────
+  const mpX = cx + 14;
+
+  if (inv) {
+    // прикреплён к потолку — тело свисает вниз
+    const footY = ceilY + SURF;
+    ctx.globalAlpha = 0.90;
+    ctx.fillStyle = '#c0a0ff';
+    ctx.fillRect(mpX - 4, footY, 3, 6);      // левая нога
+    ctx.fillRect(mpX + 1, footY, 3, 6);      // правая нога
+    ctx.fillRect(mpX - 4, footY + 6, 8, 9);  // тело
+    ctx.fillStyle = '#d8c0ff';
+    ctx.beginPath();
+    ctx.arc(mpX, footY + 21, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#200040';
+    ctx.beginPath();
+    ctx.ellipse(mpX + 2, footY + 22, 1.5, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // стоит на полу — обычная ориентация
+    const footY = floorY;
+    ctx.globalAlpha = 0.90;
+    ctx.fillStyle = '#c0a0ff';
+    ctx.fillRect(mpX - 4, footY - 6,  3, 6);  // левая нога
+    ctx.fillRect(mpX + 1, footY - 6,  3, 6);  // правая нога
+    ctx.fillRect(mpX - 4, footY - 15, 8, 9);  // тело
+    ctx.fillStyle = '#d8c0ff';
+    ctx.beginPath();
+    ctx.arc(mpX, footY - 21, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#200040';
+    ctx.beginPath();
+    ctx.ellipse(mpX + 2, footY - 22, 1.5, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ── KEY CAPS [W] и [S] ────────────────────────────────────────────────────
+  _gravKeyHint(ctx, SX + 13, ceilY + SURF / 2, 'W', inv,  pulse);
+  _gravKeyHint(ctx, SX + 13, floorY + SURF / 2, 'S', !inv, pulse);
 
   ctx.restore();
+}
+
+// вспомогательная функция — клавиша-подсказка
+function _gravKeyHint(ctx, x, y, label, active, pulse) {
+  const KW = 18, KH = 14;
+  ctx.globalAlpha = active ? (0.75 + pulse * 0.25) : 0.22;
+  ctx.fillStyle = active ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.04)';
+  ctx.beginPath();
+  ctx.roundRect(x - KW / 2, y - KH / 2, KW, KH, 3);
+  ctx.fill();
+  ctx.strokeStyle = active ? `rgba(255,255,255,${0.5 + pulse * 0.3})` : 'rgba(255,255,255,0.10)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = active ? '#fff' : '#556';
+  ctx.font = 'bold 9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, y);
 }
 
 // Визуальные полосы пола и потолка для горизонтальной гравитации (Сон 6)
