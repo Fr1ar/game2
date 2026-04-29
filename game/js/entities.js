@@ -760,21 +760,61 @@ class PulsingCurrentZone extends CurrentZone {
 }
 
 // Mini teleport portal — jumps player to a secret platform
+// Sprite sheet for TeleportPortal: 5 cols × 5 rows = 25 frames.
+const TeleportPortalSprite = (() => {
+  const img = new Image();
+  let loaded = false, failed = false;
+  img.onload  = () => { loaded = true; };
+  img.onerror = () => { failed = true; };
+  img.src = 'sprites/Portal 2.png';
+  return {
+    img,
+    cols: 5, rows: 5, frames: 25,
+    isReady: () => loaded && !failed,
+  };
+})();
+
 class TeleportPortal {
   constructor(x, y, destX, destY) {
     this.x = x; this.y = y;
     this.w = 48; this.h = 72;
     this.destX = destX; this.destY = destY;
     this.pulse = 0; this.rotation = 0; this.cooldown = 0;
+    this.animTime  = Math.random() * 25;
+    this.frameIdx  = 0;
+    this._spriteCanvas = null;
+    this.exitFlash = { timer: 0, maxTimer: 55, animTime: 0 };
   }
 
   get cx() { return this.x + this.w / 2; }
   get cy() { return this.y + this.h / 2; }
 
+  _buildSpriteCanvas() {
+    const img = TeleportPortalSprite.img;
+    const oc  = document.createElement('canvas');
+    oc.width = img.naturalWidth; oc.height = img.naturalHeight;
+    const octx = oc.getContext('2d');
+    octx.drawImage(img, 0, 0);
+    const id = octx.getImageData(0, 0, oc.width, oc.height);
+    const d  = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114 < 40 && Math.max(d[i], d[i+1], d[i+2]) < 60)
+        d[i+3] = 0;
+    }
+    octx.putImageData(id, 0, 0);
+    return oc;
+  }
+
   update() {
     this.pulse += 0.06;
     this.rotation += 0.03;
     if (this.cooldown > 0) this.cooldown--;
+    this.animTime += this.cooldown > 0 ? 0.10 : 0.40;
+    this.frameIdx  = Math.floor(this.animTime) % TeleportPortalSprite.frames;
+    if (this.exitFlash.timer > 0) {
+      this.exitFlash.timer--;
+      this.exitFlash.animTime += 0.40;
+    }
   }
 
   checkTeleport(player) {
@@ -785,6 +825,8 @@ class TeleportPortal {
       player.y = (typeof this.destY === 'function') ? this.destY() : this.destY;
       player.vx = 0; player.vy = 0;
       this.cooldown = 90;
+      this.exitFlash.timer    = this.exitFlash.maxTimer;
+      this.exitFlash.animTime = 0;
       for (let i = 0; i < 22; i++) {
         const a = Math.random() * Math.PI * 2, spd = 1 + Math.random() * 3;
         player.trailParticles.push({
@@ -799,6 +841,51 @@ class TeleportPortal {
   draw(ctx, camX, camY) {
     const sx = this.cx - camX, sy = this.cy - camY;
     const alpha = this.cooldown > 0 ? 0.30 : 1;
+
+    // sprite-based animation — same pattern as Bat
+    if (TeleportPortalSprite.isReady()) {
+      if (!this._spriteCanvas) this._spriteCanvas = this._buildSpriteCanvas();
+      const img = this._spriteCanvas;
+      const fw  = (img.width  / TeleportPortalSprite.cols) | 0;
+      const fh  = (img.height / TeleportPortalSprite.rows) | 0;
+      const dh  = 110;
+      const dw  = (fw / fh) * dh;
+
+      // основной портал
+      const fx = (this.frameIdx % TeleportPortalSprite.cols) * fw;
+      const fy = Math.floor(this.frameIdx / TeleportPortalSprite.cols) * fh;
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(img, fx, fy, fw, fh, sx - dw / 2, sy - dh / 2, dw, dh);
+      ctx.restore();
+
+      // exit flash — временный портал в точке выхода
+      const ef = this.exitFlash;
+      if (ef.timer > 0) {
+        const t   = ef.timer / ef.maxTimer;          // 1 → 0
+        const efi = Math.floor(ef.animTime) % TeleportPortalSprite.frames;
+        const efx = (efi % TeleportPortalSprite.cols) * fw;
+        const efy = Math.floor(efi / TeleportPortalSprite.cols) * fh;
+        // мировые координаты выхода → экранные
+        const destCx = (typeof this.destX === 'function' ? this.destX() : this.destX) + 24;
+        const destCy = (typeof this.destY === 'function' ? this.destY() : this.destY) + 36;
+        const esx = destCx - camX;
+        const esy = destCy - camY;
+        // масштаб: появляется большим, сужается до нуля
+        const sc = t;
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        ctx.globalAlpha = t * 0.9;
+        ctx.translate(esx, esy);
+        ctx.scale(sc, sc);
+        ctx.drawImage(img, efx, efy, fw, fh, -dw / 2, -dh / 2, dw, dh);
+        ctx.restore();
+      }
+      return;
+    }
+
+    // fallback: canvas-drawn
     const sc = 1 + Math.sin(this.pulse) * 0.10;
     const r = 26;
     ctx.save();
