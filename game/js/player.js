@@ -113,8 +113,6 @@ class Player {
     this.onGround = false;
     this.y += this.vy;
     this._resolveY(platforms);
-    if (!wasOnGround && this.onGround) SoundFX.land();
-
     // --- hazards ---
     for (const h of hazards) {
       if (this._overlaps(h)) { this.die(); return; }
@@ -181,8 +179,6 @@ class Player {
     this.onGround = false;
     this.x += this.vx;
     this._resolveX_land(platforms);
-    if (!wasOnGround && this.onGround) SoundFX.land();
-
     // hazards
     for (const h of hazards) { if (this._overlaps(h)) { this.die(); return; } }
 
