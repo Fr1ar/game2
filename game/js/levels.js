@@ -375,12 +375,6 @@ const L4 = {
 
   teleportPortals: undefined,  // assigned below — destination tracks the spring's live position
 
-  bats: [
-    new Bat(1100, 320),         // early — hovering between start and first checkpoint
-    new Bat(2504, 437, true),   // mid-late — sitting on platform (2480, 520, w=160), centered: 113×83 bat → x=2504, y=520-83=437
-    new Bat(3300, 260),         // late — hovering near the climb before the portal
-  ],
-
   hazards: [],
 
   // leftward wind under shard 2 (2312, 300) — pushes the springing player off course
