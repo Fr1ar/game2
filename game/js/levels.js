@@ -377,7 +377,7 @@ const L4 = {
 
   bats: [
     new Bat(1100, 320),         // early — hovering between start and first checkpoint
-    new Bat(2544, 493, true),   // mid-late — sitting on the nearest platform (2480, 520)
+    new Bat(2504, 437, true),   // mid-late — sitting on platform (2480, 520, w=160), centered: 113×83 bat → x=2504, y=520-83=437
     new Bat(3300, 260),         // late — hovering near the climb before the portal
   ],
 
@@ -426,7 +426,7 @@ const L5 = {
     new Platform(0,    660, 2560, 60, '#1a0a30'),
 
     // floor-level stepping stones (normal gravity navigation)
-    new Platform(100,  560, 160, 18, '#1e1040'),
+    new Platform(220,  560, 160, 18, '#1e1040'),
     new Platform(300,  480, 140, 18, '#1e1040'),
     new Platform(500,  560, 160, 18, '#1e1040'),
     new Platform(700,  480, 140, 18, '#1e1040'),
@@ -453,13 +453,33 @@ const L5 = {
   ],
 
   shards: [
-    // all shards near ceiling — only reachable with inverted gravity
-    new Shard(392,  140),   // ceiling zone — easy (low ceiling platform)
-    new Shard(932,  78),    // ceiling zone — medium
-    new Shard(2012, 78),    // ceiling zone — hard (far end)
+    // все осколки у потолка — парят вниз (hoverDY:+1), т.к. потолок = пол при инверсии
+    Object.assign(new Shard(392,  140), { hoverDY:  1 }),
+    Object.assign(new Shard(932,   78), { hoverDY:  1 }),
+    Object.assign(new Shard(2012,  78), { hoverDY:  1 }),
   ],
 
-  hazards: [],
+  hazards: [
+    // ── Напольные шипы — опасны при обычной гравитации ────────────────────────
+    // вынуждают инвертировать гравитацию и идти по потолочным платформам
+    new Hazard(210,  636, 80, 24),   // ранний участок, до первой потолочной ступени
+    new Hazard(630,  636, 96, 24),   // между ступенями пола x=500-660 и x=700-840
+    new Hazard(1070, 636, 80, 24),   // после чекпоинта, охрана зоны шарда y=78
+    new Hazard(1420, 636, 96, 24),   // второй половины уровня
+    new Hazard(1830, 636, 80, 24),   // финальный участок перед порталом
+
+    // ── Потолочные шипы (flip:true) — опасны при инвертированной гравитации ──
+    // висят с потолка в зонах без потолочных ступеней
+    Object.assign(new Hazard(1247, 60, 16, 24), { flip: true }),   // зазор x=1230-1280 между ступенями
+    Object.assign(new Hazard(2240, 60, 96, 24), { flip: true }),   // после последней ступени (x>2130)
+  ],
+
+  // ── Летучие мыши — угроза на обоих уровнях гравитации ─────────────────────
+  bats: [
+    new Bat(450,  300),   // ранний участок, между первыми потолочными ступенями
+    new Bat(1050, 360),   // зона чекпоинта + шард y=78 (x=932)
+    new Bat(1750, 280),   // поздний участок, перед третьим шардом (x=2012)
+  ],
 
   checkpoints: [
     new Checkpoint(940, 522),
@@ -480,6 +500,7 @@ const L6 = {
   deathY: 2760, deathMinY: -60,
   physics: { gravity: 0.35, jumpForce: 18, djForce: 15, moveSpeed: 4.5, friction: 0.88 },
   horizontalGravity: true, initialGravityDir: -1,
+  gravityToggle: true,
 
   platforms: [
     // ── Левая стена (пол при gravityDir=-1) — прерывистая ──────────────────
@@ -529,9 +550,10 @@ const L6 = {
   ],
 
   shards: [
-    new Shard(30,   286),   // левая стена, сектор 1  — лёгкий
-    new Shard(1228, 1058),  // правая стена, сектор 2 — средний
-    new Shard(30,   2204),  // левая стена, сектор 3  — сложный
+    // парят от стены: левые → вправо (hoverDX:+1), правые → влево (hoverDX:-1)
+    Object.assign(new Shard(30,   286),  { hoverDX:  1, hoverDY: 0 }),
+    Object.assign(new Shard(1228, 1058), { hoverDX: -1, hoverDY: 0 }),
+    Object.assign(new Shard(30,   2204), { hoverDX:  1, hoverDY: 0 }),
   ],
 
   hazards: [],
@@ -551,4 +573,4 @@ const L6 = {
   portal: new Portal(1204, 2514),
 };
 
-const LEVELS = [L1, L2, L3, L4, L5, L6];
+const LEVELS = [L4, L5, L1, L2, L3, L6];

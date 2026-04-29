@@ -21,7 +21,8 @@ let state, levelIndex, level, player, chaser,
     shardsCollected, controlsTimer,
     messageTimer, bgStars, bgTime,
     gravityFlipCooldown, cutsceneTimer,
-    oceanWaveTimer, bgBubbles;
+    oceanWaveTimer, bgBubbles,
+    gravHint;
 
 function initStars(levelWidth) {
   bgStars = [];
@@ -175,6 +176,27 @@ function loadLevel(idx) {
   level = LEVELS[idx];
   player = new Player(level.playerStart.x, level.playerStart.y);
   player.setPhysics(level.physics || {});
+
+  // ghost sprite for all levels
+  if (!window._ghostImg) {
+    window._ghostImg = new Image();
+    window._ghostImg.src = 'sprites/sprite-max-px-16 (1).png';
+  }
+  player.ghostSprite  = window._ghostImg;
+  player._ghostCanvas = null;
+
+  if (!window._ghostEndImg) {
+    window._ghostEndImg = new Image();
+    window._ghostEndImg.src = 'sprites/sprite-max-end.png';
+  }
+  player.endSprite       = window._ghostEndImg;
+
+  player.endAnimActive   = false;
+  player.endAnimDone     = false;
+  player.endAnimFrame    = 0;
+  player.endAnimTimer    = 0;
+  player._ghostEndCanvas = null;
+
   if (level.horizontalGravity) {
     player.gravityAxis = 'x';
     player.gravityDir  = level.initialGravityDir !== undefined ? level.initialGravityDir : -1;
@@ -216,6 +238,7 @@ function loadLevel(idx) {
   controlsTimer = 320;
   messageTimer = 0;
   gravityFlipCooldown = 0;
+  gravHint = !!level.gravityToggle;
   bgTime = 0;
   oceanWaveTimer = 0;
   if (level.isOcean) {
@@ -356,6 +379,14 @@ function update() {
     if (messageTimer > 55 && Input.wasJumped()) {
       player.reset(checkpointX, checkpointY);
       player.setPhysics(level.physics || {});
+      player.ghostSprite     = window._ghostImg;
+      player._ghostCanvas    = null;
+      player.endSprite       = window._ghostEndImg;
+      player.endAnimActive   = false;
+      player.endAnimDone     = false;
+      player.endAnimFrame    = 0;
+      player.endAnimTimer    = 0;
+      player._ghostEndCanvas = null;
       if (level.horizontalGravity) {
         player.gravityAxis = 'x';
         player.gravityDir  = level.initialGravityDir !== undefined ? level.initialGravityDir : -1;
@@ -395,16 +426,29 @@ function update() {
     }
   }
 
-  // gravity toggle (level 5)
+  // gravity toggle (level 5) — ↑/W тянет к потолку, ↓/S тянет к полу
   if (level.gravityToggle) {
+    if (gravHint) {
+      const anyKey = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',
+                      'Space','KeyW','KeyA','KeyS','KeyD','KeyG']
+        .some(k => Input.wasPressed(k));
+      if (anyKey) gravHint = false;
+    }
     gravityFlipCooldown--;
-    if (gravityFlipCooldown <= 0 &&
-        (Input.wasPressed('ArrowDown') || Input.wasPressed('KeyS'))) {
-      player.gravityDir *= -1;
-      player.vy = 0;
-      player.canDoubleJump = true;
-      gravityFlipCooldown = 18;
-      SoundFX.gravityFlip();
+    if (gravityFlipCooldown <= 0) {
+      const toUp   = !level.horizontalGravity && (Input.wasPressed('ArrowUp')   || Input.wasPressed('KeyW'));
+      const toDown = !level.horizontalGravity && (Input.wasPressed('ArrowDown')  || Input.wasPressed('KeyS'));
+      const toggle = Input.wasPressed('KeyG');
+      if (toUp && player.gravityDir !== -1) {
+        player.gravityDir = -1; player.vy = 0; player.canDoubleJump = true;
+        gravityFlipCooldown = 18; SoundFX.gravityFlip();
+      } else if (toDown && player.gravityDir !== 1) {
+        player.gravityDir =  1; player.vy = 0; player.canDoubleJump = true;
+        gravityFlipCooldown = 18; SoundFX.gravityFlip();
+      } else if (toggle) {
+        player.gravityDir *= -1; player.vy = 0; player.canDoubleJump = true;
+        gravityFlipCooldown = 18; SoundFX.gravityFlip();
+      }
     }
   }
 
@@ -465,8 +509,8 @@ function update() {
 
   if (level.spring) level.spring.update(player, level.platforms, level.deathY);
 
-  // player update
-  player.update(level.platforms, level.hazards);
+  // player update (skip during end anim)
+  if (!player.endAnimActive) player.update(level.platforms, level.hazards);
 
   // chaser update
   if (chaser) {
@@ -549,12 +593,41 @@ function update() {
     }
   });
 
+  // end anim tick (level 2 portal entry) — skip normal player physics during this
+  if (player.endAnimActive) {
+    player.vx = 0; player.vy = 0;
+    player.endAnimTimer++;
+    if (player.endAnimTimer >= 4) {
+      player.endAnimTimer = 0;
+      player.endAnimFrame++;
+      if (player.endAnimFrame >= 25) {
+        player.endAnimDone   = true;
+        player.endAnimActive = false;
+        if (levelIndex + 1 >= LEVELS.length) {
+          state = State.CUTSCENE; cutsceneTimer = 0;
+          SoundFX.stopBGM(); SoundFX.startCutsceneMusic();
+        } else {
+          state = State.LEVEL_COMPLETE; messageTimer = 0;
+        }
+      }
+    }
+  }
+
   // portal enter
-  if (level.portal.active) {
+  if (level.portal.active && !player.endAnimActive && !player.endAnimDone) {
     const p = level.portal;
     if (overlaps(player, { x: p.cx - 24, y: p.cy - 24, w: 48, h: 48 })) {
       SoundFX.portalEnter();
-      if (levelIndex + 1 >= LEVELS.length) {
+      if (player.endSprite && player.endSprite.complete && player.endSprite.naturalWidth > 0) {
+        player.endAnimActive    = true;
+        player.endAnimFrame     = 0;
+        player.endAnimTimer     = 0;
+        player.endStartWorldX   = player.cx;
+        player.endStartWorldY   = player.cy;
+        player.endPortalWorldX  = p.cx;
+        player.endPortalWorldY  = p.cy;
+        player.vx = 0; player.vy = 0;
+      } else if (levelIndex + 1 >= LEVELS.length) {
         state = State.CUTSCENE;
         cutsceneTimer = 0;
         SoundFX.stopBGM();
@@ -671,9 +744,10 @@ function draw() {
 
   // gravity indicator for level 5
   if (level.gravityToggle) drawGravityIndicator();
+  if (level.gravityToggle && gravHint) drawGravHint();
 
   // wall indicator for level 6
-  if (level.horizontalGravity) drawWallIndicator();
+  if (level.horizontalGravity && !level.gravityToggle) drawWallIndicator();
 
   // chaser proximity warning
   if (chaser) drawChaserWarning();
@@ -692,29 +766,232 @@ function draw() {
   }
 }
 
-function drawGravityIndicator() {
-  const inverted = player.gravityDir < 0;
-  const t = Date.now() / 400;
-  const pulse = 0.7 + Math.sin(t) * 0.3;
-  const x = W - 52, y = H - 52;
+function drawGravHint() {
+  const t  = Date.now() / 600;
+  const pulse = 0.55 + Math.sin(t) * 0.45;
+  const cx = W / 2, cy = H / 2 - 60;
 
   ctx.save();
-  ctx.globalAlpha = 0.8 * pulse;
-  ctx.fillStyle = inverted ? '#aa60ff' : '#6080ff';
-  ctx.beginPath();
-  ctx.arc(x, y, 18, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 20px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(inverted ? '↑' : '↓', x, y);
 
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = '#9080c0';
-  ctx.font = '11px sans-serif';
-  ctx.fillText('↓/S — flip', x, y + 26);
+  // полупрозрачная таблетка-фон
+  const TW = 320, TH = 44;
+  ctx.globalAlpha = 0.72 * pulse;
+  ctx.fillStyle = '#0a0520';
+  ctx.beginPath();
+  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 10);
+  ctx.fill();
+
+  // цветная рамка
+  ctx.globalAlpha = 0.55 * pulse;
+  ctx.strokeStyle = '#7040d8';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(cx - TW / 2, cy - TH / 2, TW, TH, 10);
+  ctx.stroke();
+
+  // иконка [G]
+  const kx = cx - 118, ky = cy;
+  ctx.globalAlpha = 0.80 * pulse;
+  const kg = ctx.createLinearGradient(kx, ky - 10, kx, ky + 10);
+  kg.addColorStop(0, '#5040b8'); kg.addColorStop(1, '#2a1870');
+  ctx.fillStyle = kg;
+  ctx.beginPath(); ctx.roundRect(kx - 11, ky - 10, 22, 20, 4); ctx.fill();
+  ctx.globalAlpha = 0.25 * pulse;
+  ctx.fillStyle = '#b0a0ff';
+  ctx.fillRect(kx - 8, ky - 8, 16, 3);
+  ctx.globalAlpha = 1 * pulse;
+  ctx.fillStyle = '#e0d8ff';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('G', kx, ky + 1);
+
+  // текст
+  ctx.globalAlpha = 0.90 * pulse;
+  ctx.fillStyle = '#c8b8f0';
+  ctx.font = '14px sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText('— нажми, чтобы сменить гравитацию', cx - 90, cy + 1);
+
+  ctx.restore();
+}
+
+function drawGravityIndicator() {
+  const inv   = player.gravityDir < 0;
+  const t     = Date.now() / 280;
+  const pulse = 0.5 + Math.sin(t) * 0.5;
+
+  // показываем ПРОТИВОПОЛОЖНОЕ состояние (куда переключимся)
+  const toInv = !inv;
+
+  // ── размеры и позиция ─────────────────────────────────────────────────────
+  const PW = 86, PH = 96;
+  const px = W - PW - 16, py = H - PH - 16;
+  const cx = px + PW / 2;
+  const SURF = 9;
+  const SX = px + 8, SW = PW - 16;
+
+  ctx.save();
+
+  // ── фон ──────────────────────────────────────────────────────────────────
+  ctx.globalAlpha = 0.86;
+  ctx.fillStyle = '#06020f';
+  ctx.beginPath();
+  ctx.roundRect(px, py, PW, PH, 12);
+  ctx.fill();
+
+  // пульсирующая рамка цвета ЦЕЛЕВОЙ стороны
+  ctx.globalAlpha = 0.28 + pulse * 0.35;
+  ctx.strokeStyle = toInv ? '#9838e8' : '#2858d8';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(px, py, PW, PH, 12);
+  ctx.stroke();
+
+  // ── ПОТОЛОК ───────────────────────────────────────────────────────────────
+  const ceilY = py + 6;
+  if (toInv) {
+    const cg = ctx.createLinearGradient(cx, ceilY + SURF, cx, ceilY + SURF + 38);
+    cg.addColorStop(0, `rgba(155,55,255,${0.5 * pulse})`);
+    cg.addColorStop(1, 'rgba(155,55,255,0)');
+    ctx.globalAlpha = 1; ctx.fillStyle = cg;
+    ctx.fillRect(SX, ceilY + SURF, SW, 38);
+  }
+  ctx.globalAlpha = toInv ? 0.95 : 0.20;
+  ctx.fillStyle = toInv ? '#6820b8' : '#181028';
+  ctx.fillRect(SX, ceilY, SW, SURF);
+  // тайловые риски
+  ctx.globalAlpha = toInv ? 0.30 : 0.07; ctx.fillStyle = '#fff';
+  for (let i = 0; i < 4; i++) ctx.fillRect(SX + 5 + i * 17, ceilY, 1, SURF);
+  // грань приземления
+  ctx.globalAlpha = toInv ? (0.55 + pulse * 0.45) : 0.10;
+  ctx.fillStyle = toInv ? '#d898ff' : '#2d1a44';
+  ctx.fillRect(SX, ceilY + SURF - 2, SW, 2);
+
+  // ── ПОЛ ───────────────────────────────────────────────────────────────────
+  const floorY = py + PH - 6 - SURF;
+  if (!toInv) {
+    const fg = ctx.createLinearGradient(cx, floorY - 38, cx, floorY);
+    fg.addColorStop(0, 'rgba(28,88,220,0)');
+    fg.addColorStop(1, `rgba(28,88,220,${0.5 * pulse})`);
+    ctx.globalAlpha = 1; ctx.fillStyle = fg;
+    ctx.fillRect(SX, floorY - 38, SW, 38);
+  }
+  ctx.globalAlpha = !toInv ? 0.95 : 0.20;
+  ctx.fillStyle = !toInv ? '#1e48b0' : '#0a1026';
+  ctx.fillRect(SX, floorY, SW, SURF);
+  ctx.globalAlpha = !toInv ? 0.30 : 0.07; ctx.fillStyle = '#fff';
+  for (let i = 0; i < 4; i++) ctx.fillRect(SX + 5 + i * 17, floorY, 1, SURF);
+  ctx.globalAlpha = !toInv ? (0.55 + pulse * 0.45) : 0.10;
+  ctx.fillStyle = !toInv ? '#78b0ff' : '#14203a';
+  ctx.fillRect(SX, floorY, SW, 2);
+
+  // ── ЧАСТИЦЫ дрейфуют к ЦЕЛЕВОЙ поверхности ───────────────────────────────
+  const pTop = ceilY + SURF + 2, pBot = floorY - 2, span = pBot - pTop;
+  ctx.fillStyle = toInv ? '#c070ff' : '#5888ff';
+  for (let i = 0; i < 5; i++) {
+    const ph   = ((t * 0.6 + i * 0.68) % 1);
+    const frac = toInv ? 1 - ph : ph;
+    const dy   = pTop + frac * span;
+    const dx   = SX + 8 + (i * 14) % (SW - 16);
+    ctx.globalAlpha = Math.sin(ph * Math.PI) * 0.65;
+    ctx.beginPath();
+    ctx.arc(dx, dy, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ── МИНИ-ПЕРСОНАЖ — показывает ЦЕЛЕВОЕ положение ─────────────────────────
+  const mpX = cx + 18;
+  ctx.globalAlpha = 0.92;
+  if (toInv) {
+    const fy = ceilY + SURF;
+    ctx.fillStyle = '#c0a0ff';
+    ctx.fillRect(mpX - 4, fy,     3, 6);
+    ctx.fillRect(mpX + 1, fy,     3, 6);
+    ctx.fillRect(mpX - 4, fy + 6, 8, 8);
+    ctx.fillStyle = '#d8c0ff';
+    ctx.beginPath(); ctx.arc(mpX, fy + 20, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1a0030';
+    ctx.beginPath(); ctx.ellipse(mpX + 2, fy + 21, 1.5, 2, 0, 0, Math.PI * 2); ctx.fill();
+  } else {
+    const fy = floorY;
+    ctx.fillStyle = '#c0a0ff';
+    ctx.fillRect(mpX - 4, fy - 6,  3, 6);
+    ctx.fillRect(mpX + 1, fy - 6,  3, 6);
+    ctx.fillRect(mpX - 4, fy - 14, 8, 8);
+    ctx.fillStyle = '#d8c0ff';
+    ctx.beginPath(); ctx.arc(mpX, fy - 20, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1a0030';
+    ctx.beginPath(); ctx.ellipse(mpX + 2, fy - 21, 1.5, 2, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // ── ИКОНКА СМЕНЫ ГРАВИТАЦИИ (стрелки ↑↓) ────────────────────────────────
+  const midY = (ceilY + SURF + floorY) / 2;
+  const icX  = cx - 16;
+
+  // --- Верхняя стрелка (к потолку) — фиолетовая ---
+  const upBright = toInv ? (0.88 + pulse * 0.12) : 0.18;
+  if (toInv) {
+    ctx.globalAlpha = 0.22 * pulse;
+    ctx.fillStyle = '#a040ff';
+    ctx.beginPath(); ctx.arc(icX, midY - 10, 11, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = upBright;
+  ctx.fillStyle = toInv ? '#d090ff' : '#2a1040';
+  ctx.beginPath();
+  ctx.moveTo(icX,     midY - 16);
+  ctx.lineTo(icX - 7, midY - 6);
+  ctx.lineTo(icX - 3, midY - 6);
+  ctx.lineTo(icX - 3, midY - 2);
+  ctx.lineTo(icX + 3, midY - 2);
+  ctx.lineTo(icX + 3, midY - 6);
+  ctx.lineTo(icX + 7, midY - 6);
+  ctx.closePath(); ctx.fill();
+
+  // --- Нижняя стрелка (к полу) — синяя ---
+  const downBright = !toInv ? (0.88 + pulse * 0.12) : 0.18;
+  if (!toInv) {
+    ctx.globalAlpha = 0.22 * pulse;
+    ctx.fillStyle = '#2060e0';
+    ctx.beginPath(); ctx.arc(icX, midY + 10, 11, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = downBright;
+  ctx.fillStyle = !toInv ? '#80b8ff' : '#0e1830';
+  ctx.beginPath();
+  ctx.moveTo(icX,     midY + 16);
+  ctx.lineTo(icX - 7, midY + 6);
+  ctx.lineTo(icX - 3, midY + 6);
+  ctx.lineTo(icX - 3, midY + 2);
+  ctx.lineTo(icX + 3, midY + 2);
+  ctx.lineTo(icX + 3, midY + 6);
+  ctx.lineTo(icX + 7, midY + 6);
+  ctx.closePath(); ctx.fill();
+
+  // --- Маленькая клавиша [G] между стрелками ---
+  ctx.globalAlpha = 0.50;
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.roundRect(icX - 6, midY - 5, 13, 10, 2); ctx.fill();
+  ctx.globalAlpha = 0.70 + pulse * 0.12;
+  const kgg = ctx.createLinearGradient(icX, midY - 5, icX, midY + 5);
+  kgg.addColorStop(0, '#3828a8'); kgg.addColorStop(1, '#20185c');
+  ctx.fillStyle = kgg;
+  ctx.beginPath(); ctx.roundRect(icX - 6, midY - 5, 13, 10, 2); ctx.fill();
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = '#a090e8';
+  ctx.fillRect(icX - 4, midY - 4, 9, 2);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#d8ccff';
+  ctx.font = 'bold 8px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('G', icX, midY);
+
+  // ── ПОДПИСЬ «gravity change» ──────────────────────────────────────────────
+  ctx.globalAlpha = 0.42;
+  ctx.fillStyle = '#a090c8';
+  ctx.font = '8px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('gravity change', cx, py + PH - 3);
+
   ctx.restore();
 }
 
@@ -1260,11 +1537,11 @@ function drawIntroScreen() {
   ctx.fillStyle = '#3e3060';
   ctx.font = '15px sans-serif';
   const levels = [
-    'Сон 1 — Спокойный (туториал)',
-    'Сон 2 — Водный (слабая гравитация)',
-    'Сон 3 — Ломаный (исчезающие платформы)',
-    'Сон 4 — Кошмар (преследователь)',
-    'Сон 5 — Падение (инверсия гравитации ↓/S)',
+    'Сон 1 — Кошмар (преследователь)',
+    'Сон 2 — Падение (↑/W — потолок, ↓/S — пол)',
+    'Сон 3 — Спокойный (туториал)',
+    'Сон 4 — Водный (слабая гравитация)',
+    'Сон 5 — Ломаный (исчезающие платформы)',
     'Сон 6 — Горизонтальный (←/→ — стена, ↑/↓ — бег, Space — прыжок)',
   ];
   levels.forEach((l, i) => {
